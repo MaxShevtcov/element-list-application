@@ -12,7 +12,7 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import LeftPanel from '@/components/LeftPanel.vue';
 import RightPanel from '@/components/RightPanel.vue';
-import { usePolling } from '@/composables/usePolling';
+import { useLongPolling } from '@/composables/useLongPolling';
 
 const leftPanelRef = ref<InstanceType<typeof LeftPanel> | null>(null);
 const rightPanelRef = ref<InstanceType<typeof RightPanel> | null>(null);
@@ -25,13 +25,11 @@ function onItemDeselected(id: string) {
   leftPanelRef.value?.refreshWithHighlight(id);
 }
 
-const POLL_INTERVAL = Number(import.meta.env.VITE_POLL_INTERVAL) || 1_000;
-usePolling(
+useLongPolling(
   () => {
     leftPanelRef.value?.silentRefresh();
     rightPanelRef.value?.silentRefresh();
-  },
-  { interval: POLL_INTERVAL, pauseWhenHidden: true }
+  }
 );
 
 function onVisibilityChange() {

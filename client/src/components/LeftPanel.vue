@@ -207,13 +207,21 @@ async function silentRefresh(): Promise<void> {
   if (loading.value) return;
 
   try {
-    const fetchLimit = total.value || Math.max(items.value.length, 20);
+    const fetchLimit = Math.min(Math.max(items.value.length, 20), 100);
     const result = await api.getItems(0, fetchLimit, filter.value || undefined);
 
     total.value = result.total;
-    items.value = result.items;
-    hasMore.value = result.items.length < result.total;
+
+    const newIdSet = new Set(result.items.map((i) => i.id));
+    const oldIdSet = new Set(items.value.map((i) => i.id));
+
+    const survived = items.value.filter((item) => newIdSet.has(item.id));
+    const appeared = result.items.filter((i) => !oldIdSet.has(i.id));
+
+    items.value = [...appeared, ...survived];
+    hasMore.value = items.value.length < result.total;
   } catch {
+    // Silent fail
   }
 }
 

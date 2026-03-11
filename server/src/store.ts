@@ -2,12 +2,15 @@ export interface Item {
   id: string;
 }
 
-class Store {
+export class Store {
   private maxNumericId: number = 1_000_000;
   private allIdsSet: Set<string> = new Set();
   private customIds: string[] = [];
   private selectedOrder: string[] = [];
   private selectedSet: Set<string> = new Set();
+
+  private version: number = 0;
+  private changeCallbacks: Array<() => void> = [];
 
   constructor() {
     for (let i = 1; i <= this.maxNumericId; i++) {
@@ -47,6 +50,9 @@ class Store {
         added.add(id);
       }
     }
+    if (added.size > 0) {
+      this.bumpVersion();
+    }
     return added;
   }
 
@@ -75,6 +81,7 @@ class Store {
     if (!this.allIdsSet.has(id) || this.selectedSet.has(id)) return false;
     this.selectedSet.add(id);
     this.selectedOrder.push(id);
+    this.bumpVersion();
     return true;
   }
 
@@ -82,6 +89,7 @@ class Store {
     if (!this.selectedSet.has(id)) return false;
     this.selectedSet.delete(id);
     this.selectedOrder = this.selectedOrder.filter(sid => sid !== id);
+    this.bumpVersion();
     return true;
   }
 
@@ -217,6 +225,7 @@ class Store {
 
   reorderSelected(itemId: string, newIndex: number, filter?: string): boolean {
     if (!this.selectedSet.has(itemId)) return false;
+    let changed = false;
 
     if (filter) {
       const filteredIds = this.selectedOrder.filter(id => id.includes(filter));
@@ -236,19 +245,49 @@ class Store {
         }
       }
       this.selectedOrder = newOrder;
+      changed = true;
     } else {
       const oldIndex = this.selectedOrder.indexOf(itemId);
       if (oldIndex === -1) return false;
       this.selectedOrder.splice(oldIndex, 1);
       const clampedIndex = Math.max(0, Math.min(newIndex, this.selectedOrder.length));
       this.selectedOrder.splice(clampedIndex, 0, itemId);
+      changed = true;
     }
 
-    return true;
+    if (changed) this.bumpVersion();
+    return changed;
   }
 
   getTotalCount(): number {
     return this.allIdsSet.size;
+  }
+
+  getVersion(): number {
+    return this.version;
+  }
+
+  async waitForChange(lastVersion: number, timeoutMs: number): Promise<number> {
+    if (this.version > lastVersion) {
+      return this.version;
+    }
+    return new Promise<number>((resolve) => {
+      let settled = false;
+      const notify = () => {
+        if (settled) return;
+        settled = true;
+        resolve(this.version);
+      };
+      this.changeCallbacks.push(notify);
+      setTimeout(notify, timeoutMs);
+    });
+  }
+
+  private bumpVersion(): void {
+    this.version++;
+    const callbacks = this.changeCallbacks;
+    this.changeCallbacks = [];
+    for (const cb of callbacks) cb();
   }
 
   getSelectedCount(): number {

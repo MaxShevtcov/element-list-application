@@ -94,6 +94,31 @@ router.post('/items/add-batch', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/events', async (req: Request, res: Response) => {
+  let clientVersion = parseInt(req.query.version as string);
+  if (isNaN(clientVersion)) clientVersion = 0;
+
+  let settled = false;
+  const cleanup = () => {
+    settled = true;
+  };
+
+  req.on('close', () => {
+    cleanup();
+  });
+
+  try {
+    const newVersion = await store.waitForChange(clientVersion, 28000);
+    if (!settled) {
+      res.json({ version: newVersion });
+    }
+  } catch (err) {
+    if (!settled) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+});
+
 router.put('/selected/reorder', async (req: Request, res: Response) => {
   const { itemId, newIndex, filter } = req.body;
   if (!itemId || newIndex === undefined) {
