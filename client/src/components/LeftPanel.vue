@@ -220,22 +220,20 @@ function onScroll() {
   }
 }
 
-// expose highlight-capable refresh to parent
-
-// silently update the already-loaded range without resetting scroll/firing loader
 async function silentRefresh(): Promise<void> {
-  if (loading.value) return; // don't interrupt normal loading
+  if (loading.value) return; 
 
   try {
-    // Only refresh the items we already have loaded (min 20),
-    // preserving server order. This avoids the old bug where
-    // fetchLimit=total caused the server to clamp to 100 and
-    // the merge logic broke ordering & duplicated items.
-    const fetchLimit = Math.max(items.value.length, 20);
+    const currentLength = items.value.length;
+    const fetchLimit = Math.min(Math.max(currentLength, 20), 100);
     const result = await api.getItems(0, fetchLimit, filter.value || undefined);
 
     total.value = result.total;
-    items.value = result.items;
+
+    if (currentLength <= 100) {
+      items.value = result.items;
+    }
+
     hasMore.value = items.value.length < result.total;
   } catch {
     /* ignore polling errors silently */

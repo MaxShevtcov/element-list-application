@@ -236,13 +236,16 @@ async function silentRefresh(): Promise<void> {
   if (loading.value || draggedIndex.value !== null) return;
 
   try {
-    // Only refresh the items we already have loaded (min 20),
-    // preserving server order.
-    const fetchLimit = Math.max(items.value.length, 20);
+    const currentLength = items.value.length;
+    const fetchLimit = Math.min(Math.max(currentLength, 20), 100);
     const result = await api.getSelected(0, fetchLimit, filter.value || undefined);
 
     total.value = result.total;
-    items.value = result.items;
+
+    if (currentLength <= 100) {
+      items.value = result.items;
+    }
+
     hasMore.value = items.value.length < result.total;
   } catch {
     /* ignore polling errors */
