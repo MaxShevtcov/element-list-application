@@ -195,53 +195,41 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   /**
-   * Get unselected items (left panel)
+   * Get unselected items (left panel) — fires immediately, no queue delay
    */
   getItems(offset: number, limit: number = 20, filter?: string): Promise<PaginatedResponse> {
     const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
     if (filter) params.set('filter', filter);
-    const key = `items:${offset}:${limit}:${filter || ''}`;
-    return queue.enqueueOp(key, () =>
-      fetchJson<PaginatedResponse>(`${BASE_URL}/items?${params}`)
-    );
+    return fetchJson<PaginatedResponse>(`${BASE_URL}/items?${params}`);
   },
 
   /**
-   * Get selected items (right panel)
+   * Get selected items (right panel) — fires immediately, no queue delay
    */
   getSelected(offset: number, limit: number = 20, filter?: string): Promise<PaginatedResponse> {
-    const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+    const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });  
     if (filter) params.set('filter', filter);
-    const key = `selected:${offset}:${limit}:${filter || ''}`;
-    return queue.enqueueOp(key, () =>
-      fetchJson<PaginatedResponse>(`${BASE_URL}/selected?${params}`)
-    );
+    return fetchJson<PaginatedResponse>(`${BASE_URL}/selected?${params}`);
   },
 
   /**
-   * Select an item (move to right panel)
+   * Select an item (move to right panel) — fires immediately, no queue delay
    */
   selectItem(id: string): Promise<SelectResponse> {
-    const key = `select:${id}`;
-    return queue.enqueueOp(key, () =>
-      fetchJson<SelectResponse>(`${BASE_URL}/items/select`, {
-        method: 'POST',
-        body: JSON.stringify({ id }),
-      })
-    );
+    return fetchJson<SelectResponse>(`${BASE_URL}/items/select`, {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    });
   },
 
   /**
-   * Deselect an item (move to left panel)
+   * Deselect an item (move to left panel) — fires immediately, no queue delay
    */
   deselectItem(id: string): Promise<SelectResponse> {
-    const key = `deselect:${id}`;
-    return queue.enqueueOp(key, () =>
-      fetchJson<SelectResponse>(`${BASE_URL}/items/deselect`, {
-        method: 'POST',
-        body: JSON.stringify({ id }),
-      })
-    );
+    return fetchJson<SelectResponse>(`${BASE_URL}/items/deselect`, {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    });
   },
 
   /**

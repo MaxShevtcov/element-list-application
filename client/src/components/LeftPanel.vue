@@ -23,9 +23,7 @@
         class="add-input"
         @keyup.enter="addItem"
       />
-      <button @click="addItem" class="btn btn-add" :disabled="!newId.trim() || addingItem">
-        {{ addingItem ? '...' : '+' }}
-      </button>
+      <button @click="addItem" class="btn btn-add" :disabled="!newId.trim()">+</button>
     </div>
     <div v-if="addMessage" class="add-message" :class="addMessageType">{{ addMessage }}</div>
 
@@ -73,7 +71,6 @@ const loading = ref(false);
 const hasMore = ref(true);
 
 const newId = ref('');
-const addingItem = ref(false);
 const addMessage = ref('');
 const addMessageType = ref<'success' | 'error'>('success');
 
@@ -120,50 +117,61 @@ function onFilterChange() {
 }
 
 async function selectItem(id: string) {
+  // Optimistic update immediately — don't wait for server round-trip
+  items.value = items.value.filter(item => item.id !== id);
+  total.value--;
+  emit('item-selected');
+
   try {
     await api.selectItem(id);
-    // Remove from local list
-    items.value = items.value.filter(item => item.id !== id);
-    total.value--;
-    emit('item-selected');
-    
-    // Load more if needed
+    // Load more items to fill the list if needed
     if (items.value.length < 20 && hasMore.value) {
       await loadItems();
     }
   } catch (err) {
     console.error('Failed to select item:', err);
+    // Revert on server error
+    await loadItems(true);
   }
 }
 
-async function addItem() {
+function addItem() {
   const id = newId.value.trim();
   if (!id) return;
 
-  addingItem.value = true;
   addMessage.value = '';
-  try {
-    const result = await api.addItem(id);
+
+  // If the same ID is already pending, just show a message and don't re-enqueue
+  if (pendingItems.value.has(id)) {
+    addMessage.value = `ID "${id}" уже в очереди добавления`;
+    addMessageType.value = 'error';
+    setTimeout(() => { addMessage.value = ''; }, 3000);
+    return;
+  }
+
+  // Clear input immediately so the user can type the next ID right away
+  newId.value = '';
+  total.value++; // Optimistic increment
+
+  // Fire-and-forget: the pending badge appears immediately via pendingItemsList
+  api.addItem(id).then(result => {
     if (result.deduplicated) {
-      addMessage.value = `ID "${id}" уже в очереди добавления`;
-      addMessageType.value = 'error';
-      setTimeout(() => { addMessage.value = ''; }, 3000);
+      // Already in queue (race condition) — don't double-count
+      total.value--;
     } else if (!result.added) {
-      // Server said it already exists
+      // Server confirmed it already exists
+      total.value--;
       addMessage.value = `ID "${id}" уже существует`;
       addMessageType.value = 'error';
       setTimeout(() => { addMessage.value = ''; }, 3000);
     }
-    // On success the item is already visible via pendingItemsList and will
-    // be removed from pending once the server confirms (flushAdds handles it).
-  } catch (err) {
+    // On success: pending badge disappears after flushAdds confirms
+  }).catch(() => {
+    total.value--;
     addMessage.value = 'Ошибка при добавлении';
     addMessageType.value = 'error';
     setTimeout(() => { addMessage.value = ''; }, 5000);
-  } finally {
-    addingItem.value = false;
-    newId.value = '';
-  }
+  });
 }
 
 function onScroll() {

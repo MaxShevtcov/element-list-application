@@ -96,17 +96,20 @@ function onFilterChange() {
 }
 
 async function deselectItem(id: string) {
+  // Optimistic update immediately — don't wait for server round-trip
+  items.value = items.value.filter(item => item.id !== id);
+  total.value--;
+  emit('item-deselected');
+
   try {
     await api.deselectItem(id);
-    items.value = items.value.filter(item => item.id !== id);
-    total.value--;
-    emit('item-deselected');
-
     if (items.value.length < 20 && hasMore.value) {
       await loadItems();
     }
   } catch (err) {
     console.error('Failed to deselect item:', err);
+    // Revert on server error
+    await loadItems(true);
   }
 }
 

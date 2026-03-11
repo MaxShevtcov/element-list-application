@@ -12,15 +12,13 @@ requestQueue.setAddProcessor((ids: string[]) => store.addItemsBatch(ids));
  * Get unselected items with pagination and optional filter.
  * Query params: offset (default 0), limit (default 20), filter (optional)
  */
-router.get('/items', async (req: Request, res: Response) => {
+router.get('/items', (req: Request, res: Response) => {
   const offset = parseInt(req.query.offset as string) || 0;
   const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
   const filter = (req.query.filter as string) || undefined;
 
   try {
-    const result = await requestQueue.enqueueOperation(() => 
-      store.getUnselectedItems(offset, limit, filter)
-    );
+    const result = store.getUnselectedItems(offset, limit, filter);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
@@ -32,15 +30,13 @@ router.get('/items', async (req: Request, res: Response) => {
  * Get selected items with pagination and optional filter.
  * Maintains drag&drop sort order.
  */
-router.get('/selected', async (req: Request, res: Response) => {
+router.get('/selected', (req: Request, res: Response) => {
   const offset = parseInt(req.query.offset as string) || 0;
   const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
   const filter = (req.query.filter as string) || undefined;
 
   try {
-    const result = await requestQueue.enqueueOperation(() => 
-      store.getSelectedItems(offset, limit, filter)
-    );
+    const result = store.getSelectedItems(offset, limit, filter);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
@@ -52,7 +48,7 @@ router.get('/selected', async (req: Request, res: Response) => {
  * Select an item (move from left to right panel).
  * Body: { id: string }
  */
-router.post('/items/select', async (req: Request, res: Response) => {
+router.post('/items/select', (req: Request, res: Response) => {
   const { id } = req.body;
   if (!id) {
     res.status(400).json({ error: 'id is required' });
@@ -60,11 +56,8 @@ router.post('/items/select', async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await requestQueue.enqueueOperation(() => {
-      const success = store.selectItem(String(id));
-      return { success, id: String(id) };
-    });
-    res.json(result);
+    const success = store.selectItem(String(id));
+    res.json({ success, id: String(id) });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -75,7 +68,7 @@ router.post('/items/select', async (req: Request, res: Response) => {
  * Deselect an item (move from right to left panel).
  * Body: { id: string }
  */
-router.post('/items/deselect', async (req: Request, res: Response) => {
+router.post('/items/deselect', (req: Request, res: Response) => {
   const { id } = req.body;
   if (!id) {
     res.status(400).json({ error: 'id is required' });
@@ -83,11 +76,8 @@ router.post('/items/deselect', async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await requestQueue.enqueueOperation(() => {
-      const success = store.deselectItem(String(id));
-      return { success, id: String(id) };
-    });
-    res.json(result);
+    const success = store.deselectItem(String(id));
+    res.json({ success, id: String(id) });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
