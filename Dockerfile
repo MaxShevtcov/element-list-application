@@ -4,7 +4,7 @@ FROM node:20-alpine AS base
 WORKDIR /app
 
 # copy lockfiles first to leverage layer caching
-COPY package.json package-lock.json ./
+COPY package.json
 
 # install deps for root scripts (none) and for potential workspace commands
 RUN npm install --silent
