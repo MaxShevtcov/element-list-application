@@ -221,7 +221,35 @@ function onScroll() {
 }
 
 // expose highlight-capable refresh to parent
-defineExpose({ refreshWithHighlight });
+
+// silently update counter and first page without resetting scroll/firing loader
+async function silentRefresh(): Promise<void> {
+  if (loading.value) return; // don't interrupt normal loading
+
+  try {
+    const result = await api.getItems(0, 20, filter.value || undefined);
+    // always update total/counter
+    total.value = result.total;
+    hasMore.value = items.value.length < result.total;
+
+    const container = listContainer.value;
+    const scrollTop = container?.scrollTop ?? 0;
+    if (scrollTop < 200) {
+      const existingIds = new Set(items.value.map(i => i.id));
+      const incoming = result.items.filter(i => !existingIds.has(i.id));
+      if (incoming.length > 0) {
+        items.value = [...incoming, ...items.value].slice(
+          0,
+          Math.max(items.value.length, 20)
+        );
+      }
+    }
+  } catch {
+    /* ignore polling errors silently */
+  }
+}
+
+defineExpose({ refreshWithHighlight, silentRefresh });
 
 onMounted(() => {
   loadItems(true);

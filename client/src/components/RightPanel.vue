@@ -230,7 +230,33 @@ async function refreshWithHighlight(id: string) {
   }
 }
 
-defineExpose({ refresh, refreshWithHighlight });
+// mirror of left panel but also skip when dragging
+async function silentRefresh(): Promise<void> {
+  if (loading.value || draggedIndex.value !== null) return;
+
+  try {
+    const result = await api.getSelected(0, 20, filter.value || undefined);
+    total.value = result.total;
+    hasMore.value = items.value.length < result.total;
+
+    const container = listContainer.value;
+    const scrollTop = container?.scrollTop ?? 0;
+    if (scrollTop < 200) {
+      const existingIds = new Set(items.value.map(i => i.id));
+      const incoming = result.items.filter(i => !existingIds.has(i.id));
+      if (incoming.length > 0) {
+        items.value = [...incoming, ...items.value].slice(
+          0,
+          Math.max(items.value.length, 20)
+        );
+      }
+    }
+  } catch {
+    /* ignore polling errors */
+  }
+}
+
+defineExpose({ refresh, refreshWithHighlight, silentRefresh });
 
 onMounted(() => {
   loadItems(true);

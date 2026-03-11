@@ -9,9 +9,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import LeftPanel from '@/components/LeftPanel.vue';
 import RightPanel from '@/components/RightPanel.vue';
+import { usePolling } from '@/composables/usePolling';
 
 const leftPanelRef = ref<InstanceType<typeof LeftPanel> | null>(null);
 const rightPanelRef = ref<InstanceType<typeof RightPanel> | null>(null);
@@ -25,6 +26,32 @@ function onItemDeselected(id: string) {
   // Refresh left panel and highlight the returned ID
   leftPanelRef.value?.refreshWithHighlight(id);
 }
+
+// background polling for both panels; interval may be overridden via env
+const POLL_INTERVAL = Number(import.meta.env.VITE_POLL_INTERVAL) || 1_000;
+usePolling(
+  () => {
+    leftPanelRef.value?.silentRefresh();
+    rightPanelRef.value?.silentRefresh();
+  },
+  { interval: POLL_INTERVAL, pauseWhenHidden: true }
+);
+
+// when tab becomes visible again, force immediate refresh
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    leftPanelRef.value?.silentRefresh();
+    rightPanelRef.value?.silentRefresh();
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('visibilitychange', onVisibilityChange);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+});
 </script>
 
 <style lang="scss">
