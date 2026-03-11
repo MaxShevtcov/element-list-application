@@ -1,7 +1,16 @@
 import { ref } from 'vue';
 import type { PaginatedResponse, AddResponse, SelectResponse, ReorderResponse, BatchAddResponse } from '@/types';
 
-const BASE_URL = '/api';
+// The client talks to the server through a base URL.  During local
+// development we proxy `/api` to localhost:3000 in `vite.config.ts`, so
+// the default value is `/api`.  In a deployed environment the backend
+// may live on a completely different host, so we allow overriding the
+// URL at build time via Vite's environment variables.  Render (and most
+// other hosts) let you set a variable like `VITE_API_BASE_URL` and it will
+// be statically replaced by Vite during the build step.
+//
+// We export the computed value for tests to assert against.
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 /**
  * Reactive map of pending add operations: id → 'pending' | 'error'
