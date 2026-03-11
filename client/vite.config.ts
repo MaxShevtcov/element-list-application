@@ -13,13 +13,6 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
-    test: {
-      globals: true,
-      environment: 'jsdom',
-      alias: {
-        '@': path.resolve(__dirname, './src'),
-      },
-    },
     css: {
       preprocessorOptions: {
         scss: {
