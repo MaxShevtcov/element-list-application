@@ -1,24 +1,20 @@
 import { Router, Request, Response } from 'express';
 import { store } from './store';
-import { requestQueue } from './queue';
 
 const router = Router();
-
-// Initialize the add processor for the queue
-requestQueue.setAddProcessor((ids: string[]) => store.addItemsBatch(ids));
 
 /**
  * GET /api/items
  * Get unselected items with pagination and optional filter.
  * Query params: offset (default 0), limit (default 20), filter (optional)
  */
-router.get('/items', (req: Request, res: Response) => {
+router.get('/items', async (req: Request, res: Response) => {
   const offset = parseInt(req.query.offset as string) || 0;
   const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
   const filter = (req.query.filter as string) || undefined;
 
   try {
-    const result = store.getUnselectedItems(offset, limit, filter);
+    const result = await store.getUnselectedItems(offset, limit, filter);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
@@ -105,17 +101,14 @@ router.post('/items/add-batch', async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await requestQueue.enqueueOperation(() => {
-      const addedSet = store.addItemsBatch(uniqueIds);
-      return {
-        results: uniqueIds.map(id => ({
-          id,
-          added: addedSet.has(id),
-          alreadyExists: !addedSet.has(id),
-        })),
-      };
+    const addedSet = store.addItemsBatch(uniqueIds);
+    res.json({
+      results: uniqueIds.map(id => ({
+        id,
+        added: addedSet.has(id),
+        alreadyExists: !addedSet.has(id),
+      })),
     });
-    res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -129,22 +122,18 @@ router.get('/events', async (req: Request, res: Response) => {
   let clientVersion = parseInt(req.query.version as string);
   if (isNaN(clientVersion)) clientVersion = 0;
 
-  let settled = false;
-  const cleanup = () => {
-    settled = true;
-  };
-
-  req.on('close', () => {
-    cleanup();
-  });
+  // AbortController lets the store remove the pending callback immediately
+  // when the client disconnects, preventing unbounded callback accumulation.
+  const ac = new AbortController();
+  req.on('close', () => ac.abort());
 
   try {
-    const newVersion = await store.waitForChange(clientVersion, 28000);
-    if (!settled) {
+    const newVersion = await store.waitForChange(clientVersion, 28000, ac.signal);
+    if (newVersion !== null) {
       res.json({ version: newVersion });
     }
   } catch (err) {
-    if (!settled) {
+    if (!ac.signal.aborted) {
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -155,7 +144,7 @@ router.get('/events', async (req: Request, res: Response) => {
  * Reorder a selected item via drag&drop.
  * Body: { itemId: string, newIndex: number, filter?: string }
  */
-router.put('/selected/reorder', async (req: Request, res: Response) => {
+router.put('/selected/reorder', (req: Request, res: Response) => {
   const { itemId, newIndex, filter } = req.body;
   if (!itemId || newIndex === undefined) {
     res.status(400).json({ error: 'itemId and newIndex are required' });
@@ -163,11 +152,8 @@ router.put('/selected/reorder', async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await requestQueue.enqueueOperation(() => {
-      const success = store.reorderSelected(String(itemId), Number(newIndex), filter || undefined);
-      return { success };
-    });
-    res.json(result);
+    const success = store.reorderSelected(String(itemId), Number(newIndex), filter || undefined);
+    res.json({ success });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

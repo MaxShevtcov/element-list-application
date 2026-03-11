@@ -12,8 +12,11 @@ export class Store {
   /** Upper bound of the numeric range (inclusive). Starts at 1_000_000. */
   private maxNumericId: number = 1_000_000;
 
-  /** Set of ALL existing IDs (both numeric-as-string and custom) for dedup */
-  private allIdsSet: Set<string> = new Set();
+  /**
+   * Set of custom (non-range) IDs for O(1) dedup lookup.
+   * The numeric range [1..maxNumericId] is implicit — never materialised.
+   */
+  private customIdsSet: Set<string> = new Set();
 
   /** Custom (non-original-range) IDs, kept sorted for stable iteration */
   private customIds: string[] = [];
@@ -25,25 +28,34 @@ export class Store {
   private selectedSet: Set<string> = new Set();
 
   private version: number = 0;
-  private changeCallbacks: Array<() => void> = [];
+  /** Pending long-poll callbacks keyed by auto-incrementing ID for O(1) removal */
+  private changeCallbacks: Map<number, () => void> = new Map();
+  private callbackIdCounter: number = 0;
 
   constructor() {
-    // Pre-populate the allIdsSet with stringified 1..1_000_000
-    for (let i = 1; i <= this.maxNumericId; i++) {
-      this.allIdsSet.add(String(i));
-    }
+    // Numeric range [1..maxNumericId] is implicit — no pre-allocation needed.
+  }
+
+  /**
+   * O(1) existence check without a 1M-entry Set.
+   * Numeric IDs are valid if they fall in [1..maxNumericId].
+   * Custom IDs are tracked in customIdsSet.
+   */
+  private isExistingId(id: string): boolean {
+    const n = Number(id);
+    if (Number.isFinite(n) && String(n) === id && n >= 1 && n <= this.maxNumericId) return true;
+    return this.customIdsSet.has(id);
   }
 
   /** Check if an item ID exists */
   hasItem(id: string): boolean {
-    return this.allIdsSet.has(id);
+    return this.isExistingId(id);
   }
 
   /** Add a new item. Returns false if ID already exists. */
   addItem(id: string): boolean {
-    if (this.allIdsSet.has(id)) return false;
-    this.allIdsSet.add(id);
-    // Insert into customIds in sorted order
+    if (this.isExistingId(id)) return false;
+    this.customIdsSet.add(id);
     this.insertCustomId(id);
     return true;
   }
@@ -52,8 +64,8 @@ export class Store {
   addItems(ids: string[]): number {
     let added = 0;
     for (const id of ids) {
-      if (!this.allIdsSet.has(id)) {
-        this.allIdsSet.add(id);
+      if (!this.isExistingId(id)) {
+        this.customIdsSet.add(id);
         this.insertCustomId(id);
         added++;
       }
@@ -65,8 +77,8 @@ export class Store {
   addItemsBatch(ids: string[]): Set<string> {
     const added = new Set<string>();
     for (const id of ids) {
-      if (!this.allIdsSet.has(id)) {
-        this.allIdsSet.add(id);
+      if (!this.isExistingId(id)) {
+        this.customIdsSet.add(id);
         this.insertCustomId(id);
         added.add(id);
       }
@@ -102,7 +114,7 @@ export class Store {
 
   /** Select an item (move to right panel). */
   selectItem(id: string): boolean {
-    if (!this.allIdsSet.has(id) || this.selectedSet.has(id)) return false;
+    if (!this.isExistingId(id) || this.selectedSet.has(id)) return false;
     this.selectedSet.add(id);
     this.selectedOrder.push(id);
     this.bumpVersion();
@@ -160,7 +172,7 @@ export class Store {
    * WITH FILTER: linear scan is necessary, but we early-exit once we have
    * enough items and still count total.
    */
-  getUnselectedItems(offset: number, limit: number, filter?: string): { items: Item[]; total: number } {
+  async getUnselectedItems(offset: number, limit: number, filter?: string): Promise<{ items: Item[]; total: number }> {
     if (!filter) {
       return this.getUnselectedNoFilter(offset, limit);
     }
@@ -225,14 +237,17 @@ export class Store {
     return { items: result, total };
   }
 
-  private getUnselectedFiltered(offset: number, limit: number, filter: string): { items: Item[]; total: number } {
+  private async getUnselectedFiltered(offset: number, limit: number, filter: string): Promise<{ items: Item[]; total: number }> {
     const result: Item[] = [];
     let count = 0;
     let skipped = 0;
     let collected = false; // true once we have limit items
 
-    // Numeric range
+    // Numeric range — yield every 50k iterations to avoid blocking the event loop
     for (let i = 1; i <= this.maxNumericId; i++) {
+      if (i % 50_000 === 0) {
+        await new Promise<void>(r => setImmediate(r));
+      }
       const id = String(i);
       if (this.selectedSet.has(id)) continue;
       if (!id.includes(filter)) continue;
@@ -322,33 +337,48 @@ export class Store {
   }
 
   getTotalCount(): number {
-    return this.allIdsSet.size;
+    return this.maxNumericId + this.customIdsSet.size;
   }
 
   getVersion(): number {
     return this.version;
   }
 
-  async waitForChange(lastVersion: number, timeoutMs: number): Promise<number> {
-    if (this.version > lastVersion) {
-      return this.version;
-    }
-    return new Promise<number>((resolve) => {
-      let settled = false;
-      const notify = () => {
-        if (settled) return;
-        settled = true;
-        resolve(this.version);
+  /**
+   * Resolves when version advances past lastVersion, or after timeoutMs.
+   * Returns null if the request was aborted (client disconnected).
+   * The AbortSignal ensures the callback is removed immediately on disconnect,
+   * preventing unbounded growth of changeCallbacks under high churn.
+   */
+  async waitForChange(lastVersion: number, timeoutMs: number, signal?: AbortSignal): Promise<number | null> {
+    if (this.version > lastVersion) return this.version;
+    if (signal?.aborted) return null;
+
+    return new Promise<number | null>((resolve) => {
+      const id = ++this.callbackIdCounter;
+      let done = false;
+
+      const finish = (value: number | null) => {
+        if (done) return;
+        done = true;
+        this.changeCallbacks.delete(id);
+        resolve(value);
       };
-      this.changeCallbacks.push(notify);
-      setTimeout(notify, timeoutMs);
+
+      this.changeCallbacks.set(id, () => finish(this.version));
+      const timer = setTimeout(() => finish(this.version), timeoutMs);
+
+      signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        finish(null);
+      }, { once: true });
     });
   }
 
   private bumpVersion(): void {
     this.version++;
-    const callbacks = this.changeCallbacks;
-    this.changeCallbacks = [];
+    const callbacks = [...this.changeCallbacks.values()];
+    this.changeCallbacks.clear();
     for (const cb of callbacks) cb();
   }
 

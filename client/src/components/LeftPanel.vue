@@ -47,7 +47,7 @@
         :class="{ 'item-row--arrived': highlightedId === item.id, 'departing': departingIds.has(item.id) }"
       >
         <span class="item-id">{{ item.id }}</span>
-        <button @click="selectItem(item.id)" class="btn btn-select" title="Выбрать">→</button>
+        <button @click="selectItem(item.id)" :disabled="departingIds.has(item.id)" class="btn btn-select" title="Выбрать">→</button>
       </div>
       <Loader v-if="loading" />
       <div v-if="!loading && items.length === 0" class="empty">Нет элементов</div>
@@ -56,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import Loader from '@/components/Loader.vue';
 import { api, pendingItems } from '@/composables/useApi';
 import type { Item } from '@/types';
@@ -241,7 +241,9 @@ function onScroll() {
 }
 
 async function silentRefresh(): Promise<void> {
-  if (loading.value) return; 
+  // Skip if a load is in progress or optimistic departure animations are running
+  // to avoid overwriting the optimistic UI state mid-animation.
+  if (loading.value || departingIds.value.size > 0) return;
 
   try {
     const currentLength = items.value.length;
@@ -250,11 +252,12 @@ async function silentRefresh(): Promise<void> {
 
     total.value = result.total;
 
+    // Only update the displayed items (and hasMore) when the fetched window
+    // fits within what we retrieved — avoids a stale hasMore when currentLength > 100.
     if (currentLength <= 100) {
       items.value = result.items;
+      hasMore.value = items.value.length < result.total;
     }
-
-    hasMore.value = items.value.length < result.total;
   } catch {
     /* ignore polling errors silently */
   }
@@ -267,6 +270,10 @@ onMounted(() => {
   nextTick(() => {
     listContainer.value?.addEventListener('scroll', onScroll, { passive: true });
   });
+});
+
+onUnmounted(() => {
+  listContainer.value?.removeEventListener('scroll', onScroll);
 });
 </script>
 

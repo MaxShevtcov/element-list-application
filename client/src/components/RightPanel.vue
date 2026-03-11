@@ -37,7 +37,7 @@
       >
         <span class="drag-handle" title="Перетащите для сортировки">⠿</span>
         <span class="item-id">{{ item.id }}</span>
-        <button @click="deselectItem(item.id)" class="btn btn-deselect" title="Убрать">←</button>
+        <button @click="deselectItem(item.id)" :disabled="departingIds.has(item.id)" class="btn btn-deselect" title="Убрать">←</button>
       </div>
       <Loader v-if="loading" />
       <div v-if="!loading && items.length === 0" class="empty">Нет выбранных элементов</div>
@@ -46,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import Loader from '@/components/Loader.vue';
 import { api } from '@/composables/useApi';
 import type { Item } from '@/types';
@@ -254,8 +254,9 @@ async function refreshWithHighlight(id: string) {
 
 // silently update the already-loaded range; skip when dragging
 async function silentRefresh(): Promise<void> {
-  // don't interrupt active load or drag-and-drop
-  if (loading.value || draggedIndex.value !== null) return;
+  // Skip if a load or drag-and-drop is active, or optimistic departure
+  // animations are running — avoids overwriting optimistic UI mid-animation.
+  if (loading.value || draggedIndex.value !== null || departingIds.value.size > 0) return;
 
   try {
     const currentLength = items.value.length;
@@ -264,11 +265,12 @@ async function silentRefresh(): Promise<void> {
 
     total.value = result.total;
 
+    // Only update the displayed items (and hasMore) when the fetched window
+    // fits within what we retrieved — avoids a stale hasMore when currentLength > 100.
     if (currentLength <= 100) {
       items.value = result.items;
+      hasMore.value = items.value.length < result.total;
     }
-
-    hasMore.value = items.value.length < result.total;
   } catch {
     /* ignore polling errors */
   }
@@ -281,6 +283,10 @@ onMounted(() => {
   nextTick(() => {
     listContainer.value?.addEventListener('scroll', onScroll, { passive: true });
   });
+});
+
+onUnmounted(() => {
+  listContainer.value?.removeEventListener('scroll', onScroll);
 });
 </script>
 
