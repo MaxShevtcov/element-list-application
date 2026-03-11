@@ -1,9 +1,5 @@
 import { ref, onMounted, onUnmounted, type Ref } from 'vue';
 
-/**
- * Composable for infinite scroll functionality.
- * Detects when the user scrolls near the bottom of a container and triggers loading more items.
- */
 export function useInfiniteScroll(
   containerRef: Ref<HTMLElement | null>,
   loadMore: () => Promise<void>,

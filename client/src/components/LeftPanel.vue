@@ -70,7 +70,6 @@ const total = ref(0);
 const filter = ref('');
 const loading = ref(false);
 const hasMore = ref(true);
-// ids of items currently animating/departing when selected
 const departingIds = ref(new Set<string>());
 
 const newId = ref('');
@@ -79,26 +78,19 @@ const addMessageType = ref<'success' | 'error'>('success');
 
 const listContainer = ref<HTMLElement | null>(null);
 
-// helper for animation delays
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
-// Pending items: those not yet confirmed by the server, not already in the loaded list
 const pendingItemsList = computed(() =>
   [...pendingItems.value.entries()]
     .filter(([id]) => !items.value.some(item => item.id === id))
     .map(([id, status]) => ({ id, status }))
 );
 
-// Highlight state when an item arrives from the right panel
 const highlightedId = ref<string | null>(null);
-// Animate counter pulse when total changes
 const countAnimating = ref(false);
 
-// expose a helper for parent to refresh and optionally highlight
 async function refreshWithHighlight(id: string) {
-  // reset pagination and reload
   hasMore.value = true;
-  // in case a load was in progress we let loadItems guard it
   await loadItems(true);
   if (items.value.some(item => item.id === id)) {
     highlightedId.value = id;
@@ -106,7 +98,6 @@ async function refreshWithHighlight(id: string) {
   }
 }
 
-// watch total for pulse animation
 watch(total, () => {
   countAnimating.value = true;
   setTimeout(() => { countAnimating.value = false; }, 400);
@@ -146,7 +137,6 @@ function onFilterChange() {
 }
 
 async function selectItem(id: string) {
-  // optimistic: count goes down immediately and we mark the item as departing
   if (!departingIds.value.has(id)) {
     total.value--;
     departingIds.value.add(id);
@@ -155,7 +145,6 @@ async function selectItem(id: string) {
 
   const request = api.selectItem(id);
 
-  // wait for animation before removing from the list
   await sleep(300);
   items.value = items.value.filter(item => item.id !== id);
   departingIds.value.delete(id);
@@ -177,7 +166,6 @@ function addItem() {
 
   addMessage.value = '';
 
-  // If the same ID is already pending, just show a message and don't re-enqueue
   if (pendingItems.value.has(id)) {
     addMessage.value = `ID "${id}" уже в очереди добавления`;
     addMessageType.value = 'error';
@@ -185,23 +173,18 @@ function addItem() {
     return;
   }
 
-  // Clear input immediately so the user can type the next ID right away
   newId.value = '';
-  total.value++; // Optimistic increment
+  total.value++;
 
-  // Fire-and-forget: the pending badge appears immediately via pendingItemsList
   api.addItem(id).then(result => {
     if (result.deduplicated) {
-      // Already in queue (race condition) — don't double-count
       total.value--;
     } else if (!result.added) {
-      // Server confirmed it already exists
       total.value--;
       addMessage.value = `ID "${id}" уже существует`;
       addMessageType.value = 'error';
       setTimeout(() => { addMessage.value = ''; }, 3000);
     }
-    // On success: pending badge disappears after flushAdds confirms
   }).catch(() => {
     total.value--;
     addMessage.value = 'Ошибка при добавлении';
@@ -220,16 +203,10 @@ function onScroll() {
   }
 }
 
-// expose highlight-capable refresh to parent
-
-// silently update counter and first page without resetting scroll/firing loader
 async function silentRefresh(): Promise<void> {
-  if (loading.value) return; // don't interrupt normal loading
+  if (loading.value) return;
 
   try {
-    // Pull the entire server state (backend is source of truth).  
-    // `total` might be 0 before first load, so fall back to loaded length.
-    // after initial mount the first tick will request `limit=total`.
     const fetchLimit = total.value || Math.max(items.value.length, 20);
     const result = await api.getItems(0, fetchLimit, filter.value || undefined);
 
@@ -237,7 +214,6 @@ async function silentRefresh(): Promise<void> {
     items.value = result.items;
     hasMore.value = result.items.length < result.total;
   } catch {
-    /* ignore polling errors silently */
   }
 }
 
@@ -353,7 +329,7 @@ onMounted(() => {
   padding: 8px 0;
 }
 
-/* depart animation (slide-out-right) */
+
 @keyframes slide-out-right {
   from { opacity: 1; transform: translateX(0); }
   to   { opacity: 0; transform: translateX(60px); }
@@ -363,7 +339,7 @@ onMounted(() => {
   pointer-events: none;
 }
 
-/* highlight arrival animation */
+
 @keyframes arrival-flash {
   0%   { background: rgba($success, 0.35); border-color: $success; box-shadow: 0 0 12px rgba($success, 0.4); }
   60%  { background: rgba($success, 0.15); border-color: rgba($success, 0.5); }
@@ -374,7 +350,7 @@ onMounted(() => {
   animation: arrival-flash 1.2s ease-out forwards;
 }
 
-/* counter pulse */
+
 @keyframes count-pulse {
   0%   { transform: scale(1); }
   50%  { transform: scale(1.25); color: $success; }
