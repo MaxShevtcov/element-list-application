@@ -200,14 +200,14 @@ onMounted(() => {
 });
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .panel {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: $bg-panel;
+  border-radius: $radius-panel;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
   overflow: hidden;
 }
 
@@ -216,8 +216,8 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  background: #27ae60;
-  color: white;
+  background: $bg-controls;
+  color: $text-primary;
 }
 
 .panel-header h2 {
@@ -232,21 +232,28 @@ onMounted(() => {
 
 .panel-controls {
   padding: 12px 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid $border-subtle;
+  background: $bg-panel;
 }
 
 .filter-input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid $border-card-left;
+  border-radius: $radius-btn;
   font-size: 14px;
   outline: none;
   transition: border-color 0.2s;
+  background: $bg-input;
+  color: $text-primary;
+
+  &::placeholder {
+    color: $text-muted;
+  }
 }
 
 .filter-input:focus {
-  border-color: #27ae60;
+  border-color: $accent;
 }
 
 .list-container {
@@ -259,29 +266,32 @@ onMounted(() => {
   display: flex;
   align-items: center;
   padding: 8px 16px;
-  border-bottom: 1px solid #f5f5f5;
+  border: 1px solid $border-card-right;
+  border-radius: $radius-card;
+  background: $bg-card-right;
   transition: background 0.15s, transform 0.15s;
   cursor: grab;
   user-select: none;
+  margin: 4px 8px;
 }
 
 .item-row:hover {
-  background: #f8f9fa;
+  background: $bg-card-right-hover;
 }
 
 .item-row.dragging {
   opacity: 0.5;
-  background: #e8f5e9;
+  background: $bg-card-right-drag;
 }
 
 .item-row.drag-over {
-  border-top: 2px solid #27ae60;
-  background: #f1f8e9;
+  border-top: 2px solid $accent;
+  background: $bg-card-right-drop;
 }
 
 .drag-handle {
   margin-right: 12px;
-  color: #bbb;
+  color: $text-drag-handle;
   font-size: 16px;
   cursor: grab;
 }
@@ -295,11 +305,12 @@ onMounted(() => {
   font-family: 'Courier New', monospace;
   font-size: 14px;
   font-weight: 500;
+  color: $text-primary;
 }
 
 .btn {
   border: none;
-  border-radius: 6px;
+  border-radius: $radius-btn;
   cursor: pointer;
   font-size: 14px;
   padding: 6px 12px;
@@ -307,19 +318,20 @@ onMounted(() => {
 }
 
 .btn-deselect {
-  background: #e74c3c;
-  color: white;
+  background: $border-btn-default;
+  color: $text-muted;
 }
 
 .btn-deselect:hover {
-  background: #c0392b;
+  background: $danger;
+  color: $text-primary;
 }
 
 .loading,
 .empty {
   text-align: center;
   padding: 20px;
-  color: #999;
+  color: $text-muted;
   font-size: 14px;
 }
 </style>

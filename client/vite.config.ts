@@ -9,6 +9,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        // automatically inject variables into every scss block
+        additionalData: `@use "@/styles/variables" as *;\n`,
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

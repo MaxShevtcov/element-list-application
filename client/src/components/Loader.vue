@@ -10,7 +10,7 @@ defineProps<{
 }>();
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .loader-wrap {
   display: flex;
   justify-content: center;
@@ -27,8 +27,8 @@ defineProps<{
 .loader-ring {
   width: 24px;
   height: 24px;
-  border: 3px solid #e0e0e0;
-  border-top-color: #4a90d9;
+  border: 3px solid $border-btn-default;
+  border-top-color: $accent;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }

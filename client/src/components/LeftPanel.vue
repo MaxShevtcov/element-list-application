@@ -192,14 +192,14 @@ onMounted(() => {
 });
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .panel {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: $bg-panel;
+  border-radius: $radius-panel;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
   overflow: hidden;
 }
 
@@ -208,8 +208,8 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  background: #4a90d9;
-  color: white;
+  background: $bg-controls;
+  color: $text-primary;
 }
 
 .panel-header h2 {
@@ -224,41 +224,55 @@ onMounted(() => {
 
 .panel-controls {
   padding: 12px 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid $border-subtle;
+  background: $bg-panel;
 }
 
 .filter-input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid $border-card-left;
+  border-radius: $radius-btn;
   font-size: 14px;
   outline: none;
   transition: border-color 0.2s;
+  background: $bg-input;
+  color: $text-primary;
+
+  &::placeholder {
+    color: $text-muted;
+  }
 }
 
 .filter-input:focus {
-  border-color: #4a90d9;
+  border-color: $accent;
 }
 
 .add-form {
   display: flex;
   gap: 8px;
   padding: 8px 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid $border-subtle;
+  background: $bg-panel;
 }
 
 .add-input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  border: 1px solid $border-card-left;
+  border-radius: $radius-btn;
   font-size: 14px;
   outline: none;
+  background: $bg-input;
+  color: $text-primary;
+
+  &::placeholder {
+    color: $text-muted;
+  }
 }
 
 .add-input:focus {
-  border-color: #4a90d9;
+  border-color: $accent;
 }
 
 .add-message {
@@ -267,11 +281,11 @@ onMounted(() => {
 }
 
 .add-message.success {
-  color: #27ae60;
+  color: $success;
 }
 
 .add-message.error {
-  color: #e74c3c;
+  color: $danger;
 }
 
 .list-container {
@@ -285,45 +299,50 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 16px;
-  border-bottom: 1px solid #f5f5f5;
+  border: 1px solid $border-card-left;
+  border-radius: $radius-card;
+  background: $bg-card-left;
+  margin: 4px 8px;
   transition: background 0.15s;
 }
 
 .item-row:hover {
-  background: #f8f9fa;
+  background: $bg-card-left-hover;
 }
 
 .item-id {
   font-family: 'Courier New', monospace;
   font-size: 14px;
   font-weight: 500;
+  color: $text-primary;
 }
 
 .btn {
   border: none;
-  border-radius: 6px;
+  border-radius: $radius-btn;
   cursor: pointer;
   font-size: 14px;
   padding: 6px 12px;
   transition: all 0.15s;
-}
 
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }
 
 .btn-select {
-  background: #4a90d9;
-  color: white;
+  background: $border-btn-default;
+  color: $text-secondary;
 }
 
 .btn-select:hover:not(:disabled) {
-  background: #357abd;
+  background: $accent;
+  color: $text-primary;
 }
 
 .btn-add {
-  background: #27ae60;
+  background: $accent;
   color: white;
   font-weight: bold;
   font-size: 18px;
@@ -331,32 +350,32 @@ onMounted(() => {
 }
 
 .btn-add:hover:not(:disabled) {
-  background: #219a52;
+  background: $accent-hover;
 }
 
 .loading,
 .empty {
   text-align: center;
   padding: 20px;
-  color: #999;
+  color: $text-muted;
   font-size: 14px;
 }
 
 .item-row--pending {
   opacity: 0.65;
-  background: #fff9e6;
-  border-left: 3px solid #f39c12;
+  background: rgba($warning, 0.08);
+  border-left: 3px solid $warning;
 }
 
 .item-row--error {
   opacity: 0.65;
-  background: #fef0f0;
-  border-left: 3px solid #e74c3c;
+  background: rgba($danger, 0.08);
+  border-left: 3px solid $danger;
 }
 
 .pending-badge--error {
   font-size: 12px;
-  color: #e74c3c;
+  color: $danger;
   padding: 6px 12px;
 }
 </style>

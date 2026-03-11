@@ -25,7 +25,7 @@ function onItemDeselected() {
 }
 </script>
 
-<style>
+<style lang="scss">
 * {
   margin: 0;
   padding: 0;
@@ -35,8 +35,8 @@ function onItemDeselected() {
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, Cantarell, sans-serif;
-  background: #f0f2f5;
-  color: #333;
+  background: $bg-root;
+  color: $text-primary;
 }
 
 .app {
@@ -51,7 +51,7 @@ body {
 .app-title {
   text-align: center;
   margin-bottom: 20px;
-  color: #1a1a2e;
+  color: $text-primary;
   font-size: 24px;
 }
 

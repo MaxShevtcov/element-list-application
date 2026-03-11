@@ -1,0 +1,42 @@
+// =============================================================
+// Dark Theme — Color Tokens
+// =============================================================
+
+// Backgrounds
+$bg-root:             #0a0f1a;
+$bg-panel:            #0f1723;
+$bg-controls:         #141e2e;
+$bg-card-left:        #161f30;
+$bg-card-left-hover:  #1c2840;
+$bg-card-right:       rgba(43, 124, 238, 0.07);
+$bg-card-right-hover: rgba(43, 124, 238, 0.14);
+$bg-card-right-drag:  rgba(43, 124, 238, 0.04);
+$bg-card-right-drop:  rgba(43, 124, 238, 0.18);
+$bg-input:            #161f30;
+
+// Borders
+$border-subtle:       #1a2840;
+$border-card-left:    #1e2d42;
+$border-btn-default:  #1e2d42;
+$border-card-right:   rgba(43, 124, 238, 0.22);
+
+// Typography
+$text-primary:        #e2e8f0;
+$text-secondary:      #94a3b8;
+$text-muted:          #4a6080;
+$text-drag-handle:    #2b4a6a;
+
+// Accent (blue)
+$accent:              #2b7cee;
+$accent-hover:        #1e6dd9;
+
+// Semantic
+$danger:              #e74c3c;
+$danger-hover:        #c0392b;
+$success:             #2ecc71;
+$warning:             #f39c12;
+
+// Shape
+$radius-card:         8px;
+$radius-btn:          6px;
+$radius-panel:        12px;
