@@ -93,7 +93,7 @@ let lastHighlightRefreshAt = 0;
 
 function refreshWithHighlight(id: string) {
   pendingHighlightId.value = id;
-  silentRefresh();
+  lastHighlightRefreshAt = Date.now();
 }
 
 watch(total, () => {
