@@ -90,43 +90,38 @@ const pendingItemsList = computed(() =>
 const highlightedId = ref<string | null>(null);
 const countAnimating = ref(false);
 
-async function refreshWithHighlight(id: string) {
-  if (loading.value) return;
+let lastHighlightRefreshAt = 0;
 
-  const savedScrollTop = listContainer.value?.scrollTop ?? 0;
-  loading.value = true;
+async function refreshWithHighlight(id: string) {
+  if (!items.value.some(item => item.id === id)) {
+    items.value.unshift({ id });
+    total.value++;
+  }
+
+  highlightedId.value = id;
+  setTimeout(() => { highlightedId.value = null; }, 1200);
+
+  lastHighlightRefreshAt = Date.now();
 
   try {
-    const fetchLimit = Math.max(items.value.length, 20);
+    const fetchLimit = Math.min(Math.max(items.value.length, 20), 100);
     const result = await api.getItems(0, fetchLimit, filter.value || undefined);
 
     total.value = result.total;
-    items.value = result.items;
     hasMore.value = items.value.length < result.total;
+
+    if (items.value.length <= fetchLimit) {
+      items.value = result.items;
+      if (result.items.some(item => item.id === id)) {
+        highlightedId.value = id;
+        setTimeout(() => { highlightedId.value = null; }, 1200);
+      }
+    }
   } catch (err) {
-    console.error('Failed to load items:', err);
-    loading.value = false;
-    return;
-  }
-
-  loading.value = false;
-
-  // Wait for Vue to update the DOM, then wait for the browser to paint
-  // before restoring scroll — prevents long-polling silentRefresh from
-  // clobbering the position mid-flight and ensures layout is settled.
-  await nextTick();
-  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-  if (listContainer.value) {
-    listContainer.value.scrollTop = savedScrollTop;
-  }
-
-  if (items.value.some(item => item.id === id)) {
-    highlightedId.value = id;
-    setTimeout(() => { highlightedId.value = null; }, 1200);
+    console.error('Failed to reconcile items after highlight:', err);
   }
 }
 
-// watch total for pulse animation
 watch(total, () => {
   countAnimating.value = true;
   setTimeout(() => { countAnimating.value = false; }, 400);
@@ -166,27 +161,25 @@ function onFilterChange() {
 }
 
 async function selectItem(id: string) {
-  // optimistic: count goes down immediately and we mark the item as departing
-  if (!departingIds.value.has(id)) {
-    total.value--;
-    departingIds.value.add(id);
-    emit('item-selected', id);
-  }
+  if (departingIds.value.has(id)) return;
+  total.value--;
+  departingIds.value.add(id);
 
   const request = api.selectItem(id);
 
-  // wait for animation before removing from the list
   await sleep(300);
   items.value = items.value.filter(item => item.id !== id);
   departingIds.value.delete(id);
 
   try {
     await request;
+    emit('item-selected', id);
     if (items.value.length < 20 && hasMore.value) {
       await loadItems();
     }
   } catch (err) {
     console.error('Failed to select item:', err);
+    total.value++;
     await loadItems(true);
   }
 }
@@ -205,23 +198,18 @@ function addItem() {
     return;
   }
 
-  // Clear input immediately so the user can type the next ID right away
   newId.value = '';
   total.value++; // Optimistic increment
 
-  // Fire-and-forget: the pending badge appears immediately via pendingItemsList
   api.addItem(id).then(result => {
     if (result.deduplicated) {
-      // Already in queue (race condition) — don't double-count
       total.value--;
     } else if (!result.added) {
-      // Server confirmed it already exists
       total.value--;
       addMessage.value = `ID "${id}" уже существует`;
       addMessageType.value = 'error';
       setTimeout(() => { addMessage.value = ''; }, 3000);
     }
-    // On success: pending badge disappears after flushAdds confirms
   }).catch(() => {
     total.value--;
     addMessage.value = 'Ошибка при добавлении';
@@ -241,9 +229,9 @@ function onScroll() {
 }
 
 async function silentRefresh(): Promise<void> {
-  // Skip if a load is in progress or optimistic departure animations are running
-  // to avoid overwriting the optimistic UI state mid-animation.
   if (loading.value || departingIds.value.size > 0) return;
+
+  if (Date.now() - lastHighlightRefreshAt < 1000) return;
 
   try {
     const currentLength = items.value.length;

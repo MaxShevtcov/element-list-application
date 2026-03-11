@@ -117,34 +117,29 @@ watch(total, () => {
 });
 
 async function deselectItem(id: string) {
-  // optimistic: count goes down immediately and we mark the item as departing
-  if (!departingIds.value.has(id)) {
-    total.value--;
-    departingIds.value.add(id);
-    emit('item-deselected', id);
-  }
+  if (departingIds.value.has(id)) return;
+  total.value--;
+  departingIds.value.add(id);
 
-  // begin server request in background
   const request = api.deselectItem(id);
 
-  // wait for animation duration before actually removing from list
   await sleep(300);
   items.value = items.value.filter(item => item.id !== id);
   departingIds.value.delete(id);
 
   try {
     await request;
+    emit('item-deselected', id);
     if (items.value.length < 20 && hasMore.value) {
       await loadItems();
     }
   } catch (err) {
     console.error('Failed to deselect item:', err);
-    // Revert on server error - reload whole list which will restore counts
+    total.value++;
     await loadItems(true);
   }
 }
 
-// Drag & Drop handlers
 function onDragStart(event: DragEvent, index: number) {
   draggedIndex.value = index;
   draggedItemId.value = items.value[index].id;
@@ -179,22 +174,17 @@ async function onDrop(event: DragEvent, targetIndex: number) {
   const sourceIndex = draggedIndex.value;
   const itemId = draggedItemId.value;
 
-  // Optimistic local reorder
   const [movedItem] = items.value.splice(sourceIndex, 1);
   items.value.splice(targetIndex, 0, movedItem);
 
   draggedIndex.value = null;
   draggedItemId.value = null;
 
-  // Calculate the actual server-side index considering the offset of loaded items
-  // The items array starts at offset 0 from the currently visible set
-  // We need to account for any pagination offset
   try {
     await api.reorderSelected(itemId, targetIndex, filter.value || undefined);
   } catch (err: any) {
     if (err?.message === 'superseded') return; // normal — a newer reorder is queued
     console.error('Failed to reorder:', err);
-    // Revert on failure
     await loadItems(true);
   }
 }
@@ -215,48 +205,47 @@ function onScroll() {
   }
 }
 
-// Public method for parent to trigger refresh
 function refresh() {
   hasMore.value = true;
   loadItems(true);
 }
 
-async function refreshWithHighlight(id: string) {
-  if (loading.value) return;
+let lastHighlightRefreshAt = 0;
 
-  // Save scroll position before refreshing
-  const savedScrollTop = listContainer.value?.scrollTop ?? 0;
+async function refreshWithHighlight(id: string) {
+  if (!items.value.some(item => item.id === id)) {
+    items.value.unshift({ id });
+    total.value++;
+  }
+
+  highlightedId.value = id;
+  setTimeout(() => { highlightedId.value = null; }, 1200);
+
+  lastHighlightRefreshAt = Date.now();
 
   try {
-    // Fetch at least as many items as currently loaded to avoid collapsing the list
     const fetchLimit = Math.min(Math.max(items.value.length, 20), 100);
     const result = await api.getSelected(0, fetchLimit, filter.value || undefined);
 
     total.value = result.total;
-    items.value = result.items;
     hasMore.value = items.value.length < result.total;
+
+    if (items.value.length <= fetchLimit) {
+      items.value = result.items;
+      if (result.items.some(item => item.id === id)) {
+        highlightedId.value = id;
+        setTimeout(() => { highlightedId.value = null; }, 1200);
+      }
+    }
   } catch (err) {
-    console.error('Failed to load selected items:', err);
-    return;
-  }
-
-  // Restore scroll position after DOM update
-  await nextTick();
-  if (listContainer.value) {
-    listContainer.value.scrollTop = savedScrollTop;
-  }
-
-  if (items.value.some(item => item.id === id)) {
-    highlightedId.value = id;
-    setTimeout(() => { highlightedId.value = null; }, 1200);
+    console.error('Failed to reconcile selected items after highlight:', err);
   }
 }
 
-// silently update the already-loaded range; skip when dragging
 async function silentRefresh(): Promise<void> {
-  // Skip if a load or drag-and-drop is active, or optimistic departure
-  // animations are running — avoids overwriting optimistic UI mid-animation.
   if (loading.value || draggedIndex.value !== null || departingIds.value.size > 0) return;
+
+  if (Date.now() - lastHighlightRefreshAt < 1000) return;
 
   try {
     const currentLength = items.value.length;
@@ -265,8 +254,6 @@ async function silentRefresh(): Promise<void> {
 
     total.value = result.total;
 
-    // Only update the displayed items (and hasMore) when the fetched window
-    // fits within what we retrieved — avoids a stale hasMore when currentLength > 100.
     if (currentLength <= 100) {
       items.value = result.items;
       hasMore.value = items.value.length < result.total;
