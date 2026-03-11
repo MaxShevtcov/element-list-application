@@ -33,7 +33,7 @@
         <span class="item-id">{{ item.id }}</span>
         <button @click="deselectItem(item.id)" class="btn btn-deselect" title="Убрать">←</button>
       </div>
-      <div v-if="loading" class="loading">Загрузка...</div>
+      <Loader v-if="loading" />
       <div v-if="!loading && items.length === 0" class="empty">Нет выбранных элементов</div>
     </div>
   </div>
@@ -41,6 +41,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue';
+import Loader from '@/components/Loader.vue';
 import { api } from '@/composables/useApi';
 import type { Item } from '@/types';
 
@@ -156,7 +157,8 @@ async function onDrop(event: DragEvent, targetIndex: number) {
   // We need to account for any pagination offset
   try {
     await api.reorderSelected(itemId, targetIndex, filter.value || undefined);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.message === 'superseded') return; // normal — a newer reorder is queued
     console.error('Failed to reorder:', err);
     // Revert on failure
     await loadItems(true);

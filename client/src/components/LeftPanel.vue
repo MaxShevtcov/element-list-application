@@ -30,6 +30,18 @@
     <div v-if="addMessage" class="add-message" :class="addMessageType">{{ addMessage }}</div>
 
     <div class="list-container" ref="listContainer">
+      <!-- Pending items (optimistic, not yet confirmed by server) -->
+      <div
+        v-for="pending in pendingItemsList"
+        :key="`pending-${pending.id}`"
+        class="item-row item-row--pending"
+        :class="{ 'item-row--error': pending.status === 'error' }"
+      >
+        <span class="item-id">{{ pending.id }}</span>
+        <Loader v-if="pending.status === 'pending'" :inline="true" />
+        <span v-else class="pending-badge pending-badge--error">✕</span>
+      </div>
+
       <div
         v-for="item in items"
         :key="item.id"
@@ -38,15 +50,16 @@
         <span class="item-id">{{ item.id }}</span>
         <button @click="selectItem(item.id)" class="btn btn-select" title="Выбрать">→</button>
       </div>
-      <div v-if="loading" class="loading">Загрузка...</div>
+      <Loader v-if="loading" />
       <div v-if="!loading && items.length === 0" class="empty">Нет элементов</div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue';
-import { api } from '@/composables/useApi';
+import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import Loader from '@/components/Loader.vue';
+import { api, pendingItems } from '@/composables/useApi';
 import type { Item } from '@/types';
 
 const emit = defineEmits<{
@@ -65,6 +78,13 @@ const addMessage = ref('');
 const addMessageType = ref<'success' | 'error'>('success');
 
 const listContainer = ref<HTMLElement | null>(null);
+
+// Pending items: those not yet confirmed by the server, not already in the loaded list
+const pendingItemsList = computed(() =>
+  [...pendingItems.value.entries()]
+    .filter(([id]) => !items.value.some(item => item.id === id))
+    .map(([id, status]) => ({ id, status }))
+);
 
 let filterTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -127,17 +147,22 @@ async function addItem() {
     if (result.deduplicated) {
       addMessage.value = `ID "${id}" уже в очереди добавления`;
       addMessageType.value = 'error';
-    } else {
-      addMessage.value = `ID "${id}" добавлен в очередь (батч каждые 10 сек)`;
-      addMessageType.value = 'success';
-      newId.value = '';
+      setTimeout(() => { addMessage.value = ''; }, 3000);
+    } else if (!result.added) {
+      // Server said it already exists
+      addMessage.value = `ID "${id}" уже существует`;
+      addMessageType.value = 'error';
+      setTimeout(() => { addMessage.value = ''; }, 3000);
     }
+    // On success the item is already visible via pendingItemsList and will
+    // be removed from pending once the server confirms (flushAdds handles it).
   } catch (err) {
     addMessage.value = 'Ошибка при добавлении';
     addMessageType.value = 'error';
+    setTimeout(() => { addMessage.value = ''; }, 5000);
   } finally {
     addingItem.value = false;
-    setTimeout(() => { addMessage.value = ''; }, 5000);
+    newId.value = '';
   }
 }
 
@@ -307,5 +332,23 @@ onMounted(() => {
   padding: 20px;
   color: #999;
   font-size: 14px;
+}
+
+.item-row--pending {
+  opacity: 0.65;
+  background: #fff9e6;
+  border-left: 3px solid #f39c12;
+}
+
+.item-row--error {
+  opacity: 0.65;
+  background: #fef0f0;
+  border-left: 3px solid #e74c3c;
+}
+
+.pending-badge--error {
+  font-size: 12px;
+  color: #e74c3c;
+  padding: 6px 12px;
 }
 </style>

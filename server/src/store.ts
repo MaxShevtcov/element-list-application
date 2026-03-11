@@ -58,6 +58,19 @@ class Store {
     return added;
   }
 
+  /** Add multiple items at once. Returns Set of IDs that were actually added (did not exist before). */
+  addItemsBatch(ids: string[]): Set<string> {
+    const added = new Set<string>();
+    for (const id of ids) {
+      if (!this.allIdsSet.has(id)) {
+        this.allIdsSet.add(id);
+        this.insertCustomId(id);
+        added.add(id);
+      }
+    }
+    return added;
+  }
+
   private insertCustomId(id: string): void {
     // Binary search to keep customIds sorted
     let lo = 0, hi = this.customIds.length;

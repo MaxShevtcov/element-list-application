@@ -24,11 +24,11 @@ class RequestQueue {
   private addTimer: NodeJS.Timeout | null = null;
   private opTimer: NodeJS.Timeout | null = null;
 
-  private addProcessor: ((ids: string[]) => number) | null = null;
+  private addProcessor: ((ids: string[]) => Set<string>) | null = null;
 
   constructor() {}
 
-  setAddProcessor(processor: (ids: string[]) => number) {
+  setAddProcessor(processor: (ids: string[]) => Set<string>) {
     this.addProcessor = processor;
   }
 
@@ -69,19 +69,21 @@ class RequestQueue {
     
     if (this.addQueue.length === 0) return;
     
+    // Snapshot BEFORE clearing — new enqueues that arrive during processing
+    // will land in the next batch rather than being lost.
     const batch = [...this.addQueue];
     this.addQueue = [];
-    this.pendingAddIds.clear();
+    // Remove only the IDs we snapshotted, so any enqueue that raced in stays.
+    for (const b of batch) {
+      this.pendingAddIds.delete(b.id);
+    }
 
     const ids = batch.map(b => b.id);
     
     if (this.addProcessor) {
-      const addedCount = this.addProcessor(ids);
-      // Resolve all pending promises
-      // We can't determine per-item success easily, so we just mark all as added
-      const addedSet = new Set(ids);
+      const addedSet = this.addProcessor(ids);
       batch.forEach(b => {
-        b.resolve({ added: true, deduplicated: false });
+        b.resolve({ added: addedSet.has(b.id), deduplicated: false });
       });
     }
   }

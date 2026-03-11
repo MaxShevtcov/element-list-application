@@ -1,10 +1,17 @@
-import type { PaginatedResponse, AddResponse, SelectResponse, ReorderResponse } from '@/types';
+import { ref } from 'vue';
+import type { PaginatedResponse, AddResponse, SelectResponse, ReorderResponse, BatchAddResponse } from '@/types';
 
 const BASE_URL = '/api';
 
 /**
+ * Reactive map of pending add operations: id → 'pending' | 'error'
+ * Exported so LeftPanel can display optimistic rows while the batch is in flight.
+ */
+export const pendingItems = ref(new Map<string, 'pending' | 'error'>());
+
+/**
  * Client-side request queue with deduplication and batching.
- * - Add operations batched every 10 seconds
+ * - Add operations batched every 10 seconds (one HTTP request for the whole batch)
  * - Get/modify operations batched every 1 second
  */
 
@@ -33,6 +40,10 @@ class ClientRequestQueue {
       }
       this.addKeys.add(key);
       this.addQueue.push({ key, executor, resolve, reject });
+
+      // Optimistic pending state
+      const id = key.replace('add:', '');
+      pendingItems.value.set(id, 'pending');
 
       if (!this.addTimer) {
         this.addTimer = setTimeout(() => this.flushAdds(), 10_000);
@@ -64,19 +75,71 @@ class ClientRequestQueue {
     });
   }
 
+  /**
+   * Last-write-wins reorder: if a reorder for the same itemId is already
+   * queued, the old entry is superseded (its promise is rejected with
+   * Error('superseded')) and replaced with the new one.
+   */
+  enqueueReorder<T>(itemId: string, executor: () => Promise<T>): Promise<T> {
+    const key = `reorder:${itemId}`;
+    return new Promise((resolve, reject) => {
+      const existingIndex = this.opQueue.findIndex(q => q.key === key);
+      if (existingIndex !== -1) {
+        // Supersede old entry
+        const old = this.opQueue[existingIndex];
+        old.reject(new Error('superseded'));
+        this.opQueue[existingIndex] = {
+          key,
+          executor: executor as any,
+          resolve: resolve as any,
+          reject,
+        };
+      } else {
+        this.opKeys.add(key);
+        this.opQueue.push({ key, executor: executor as any, resolve: resolve as any, reject });
+      }
+
+      if (!this.opTimer) {
+        this.opTimer = setTimeout(() => this.flushOps(), 1_000);
+      }
+    });
+  }
+
   private async flushAdds() {
     this.addTimer = null;
+    if (this.addQueue.length === 0) return;
+
     const batch = [...this.addQueue];
     this.addQueue = [];
     this.addKeys.clear();
 
-    for (const req of batch) {
-      try {
-        const result = await req.executor();
-        req.resolve(result);
-      } catch (err) {
+    // Single HTTP request for the whole batch
+    const ids = batch.map(req => req.key.replace('add:', ''));
+    try {
+      const response = await fetchJson<BatchAddResponse>(`${BASE_URL}/items/add-batch`, {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      });
+      const resultMap = new Map(response.results.map(r => [r.id, r]));
+      batch.forEach(req => {
+        const id = req.key.replace('add:', '');
+        const itemResult = resultMap.get(id);
+        if (itemResult?.added) {
+          pendingItems.value.delete(id);
+        } else {
+          pendingItems.value.set(id, 'error');
+        }
+        req.resolve({
+          added: itemResult?.added ?? false,
+          deduplicated: false,
+        });
+      });
+    } catch (err) {
+      batch.forEach(req => {
+        const id = req.key.replace('add:', '');
+        pendingItems.value.set(id, 'error');
         req.reject(err);
-      }
+      });
     }
   }
 
@@ -98,9 +161,26 @@ class ClientRequestQueue {
       })
     );
   }
+
+  /**
+   * Cancel all pending timers and reject all queued promises.
+   * Call this on page unload to avoid orphaned state.
+   */
+  destroy(): void {
+    if (this.addTimer) { clearTimeout(this.addTimer); this.addTimer = null; }
+    if (this.opTimer) { clearTimeout(this.opTimer); this.opTimer = null; }
+
+    this.addQueue.forEach(req => req.reject(new Error('queue destroyed')));
+    this.addQueue = [];
+    this.addKeys.clear();
+
+    this.opQueue.forEach(req => req.reject(new Error('queue destroyed')));
+    this.opQueue = [];
+    this.opKeys.clear();
+  }
 }
 
-const queue = new ClientRequestQueue();
+export const queue = new ClientRequestQueue();
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -165,24 +245,26 @@ export const api = {
   },
 
   /**
-   * Add a new item with custom ID (batched every 10 sec)
+   * Add a new item with custom ID.
+   * Batched every 10 sec — a single HTTP request is sent for all accumulated IDs.
    */
   addItem(id: string): Promise<AddResponse> {
     const key = `add:${id}`;
     return queue.enqueueAdd(key, () =>
-      fetchJson<AddResponse>(`${BASE_URL}/items/add`, {
+      // executor is kept for interface compatibility but flushAdds bypasses it
+      fetchJson<AddResponse>(`${BASE_URL}/items/add-batch`, {
         method: 'POST',
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ ids: [id] }),
       })
     );
   },
 
   /**
-   * Reorder selected items (drag&drop)
+   * Reorder selected items (drag&drop).
+   * Uses last-write-wins deduplication per itemId.
    */
   reorderSelected(itemId: string, newIndex: number, filter?: string): Promise<ReorderResponse> {
-    const key = `reorder:${itemId}:${newIndex}`;
-    return queue.enqueueOp(key, () =>
+    return queue.enqueueReorder(itemId, () =>
       fetchJson<ReorderResponse>(`${BASE_URL}/selected/reorder`, {
         method: 'PUT',
         body: JSON.stringify({ itemId, newIndex, filter }),
@@ -190,3 +272,4 @@ export const api = {
     );
   },
 };
+

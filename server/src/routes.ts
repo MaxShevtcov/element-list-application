@@ -5,7 +5,7 @@ import { requestQueue } from './queue';
 const router = Router();
 
 // Initialize the add processor for the queue
-requestQueue.setAddProcessor((ids: string[]) => store.addItems(ids));
+requestQueue.setAddProcessor((ids: string[]) => store.addItemsBatch(ids));
 
 /**
  * GET /api/items
@@ -94,20 +94,37 @@ router.post('/items/deselect', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/items/add
- * Add a new item with a custom ID.
- * Body: { id: string }
- * Goes through the batched add queue (10 sec batching with deduplication).
+ * POST /api/items/add-batch
+ * Add multiple items with custom IDs in a single request.
+ * Body: { ids: string[] }
+ * Response: { results: Array<{ id: string; added: boolean; alreadyExists: boolean }> }
  */
-router.post('/items/add', async (req: Request, res: Response) => {
-  const { id } = req.body;
-  if (!id || String(id).trim() === '') {
-    res.status(400).json({ error: 'id is required and cannot be empty' });
+router.post('/items/add-batch', async (req: Request, res: Response) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: 'ids array is required and cannot be empty' });
+    return;
+  }
+
+  const cleanIds = ids.map((id: any) => String(id).trim()).filter(Boolean);
+  const uniqueIds = [...new Set(cleanIds)];
+
+  if (uniqueIds.length === 0) {
+    res.status(400).json({ error: 'ids array contains no valid entries' });
     return;
   }
 
   try {
-    const result = await requestQueue.enqueueAdd(String(id).trim());
+    const result = await requestQueue.enqueueOperation(() => {
+      const addedSet = store.addItemsBatch(uniqueIds);
+      return {
+        results: uniqueIds.map(id => ({
+          id,
+          added: addedSet.has(id),
+          alreadyExists: !addedSet.has(id),
+        })),
+      };
+    });
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });

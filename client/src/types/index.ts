@@ -20,3 +20,13 @@ export interface AddResponse {
 export interface ReorderResponse {
   success: boolean;
 }
+
+export interface BatchAddResult {
+  id: string;
+  added: boolean;
+  alreadyExists: boolean;
+}
+
+export interface BatchAddResponse {
+  results: BatchAddResult[];
+}
