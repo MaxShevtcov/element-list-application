@@ -2,7 +2,7 @@
   <div class="app">
     <h1 class="app-title">Element List Manager</h1>
     <div class="panels">
-      <LeftPanel @item-selected="onItemSelected" />
+      <LeftPanel ref="leftPanelRef" @item-selected="onItemSelected" />
       <RightPanel @item-deselected="onItemDeselected" ref="rightPanelRef" />
     </div>
   </div>
@@ -13,15 +13,17 @@ import { ref } from 'vue';
 import LeftPanel from '@/components/LeftPanel.vue';
 import RightPanel from '@/components/RightPanel.vue';
 
+const leftPanelRef = ref<InstanceType<typeof LeftPanel> | null>(null);
 const rightPanelRef = ref<InstanceType<typeof RightPanel> | null>(null);
 
-function onItemSelected() {
-  // Trigger refresh on the right panel when an item is selected
-  rightPanelRef.value?.refresh();
+function onItemSelected(id: string) {
+  // Trigger refresh on the right panel and highlight the incoming id
+  rightPanelRef.value?.refreshWithHighlight(id);
 }
 
-function onItemDeselected() {
-  // Could trigger refresh on the left panel if needed
+function onItemDeselected(id: string) {
+  // Refresh left panel and highlight the returned ID
+  leftPanelRef.value?.refreshWithHighlight(id);
 }
 </script>
 

@@ -2,7 +2,7 @@
   <div class="panel right-panel">
     <div class="panel-header">
       <h2>Выбранные</h2>
-      <span class="count">{{ total.toLocaleString() }} шт.</span>
+      <span class="count" :class="{ 'count--pulse': countAnimating }">{{ total.toLocaleString() }} шт.</span>
     </div>
 
     <div class="panel-controls">
@@ -20,7 +20,13 @@
         v-for="(item, index) in items"
         :key="item.id"
         class="item-row"
-        :class="{ 'drag-over': dragOverIndex === index, 'dragging': draggedIndex === index }"
+        :data-id="item.id"
+        :class="{
+          'drag-over': dragOverIndex === index,
+          'dragging': draggedIndex === index,
+          'departing': departingIds.has(item.id),
+          'item-row--arrived': highlightedId === item.id,
+        }"
         draggable="true"
         @dragstart="onDragStart($event, index)"
         @dragover.prevent="onDragOver($event, index)"
@@ -40,13 +46,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, onMounted, nextTick, watch } from 'vue';
 import Loader from '@/components/Loader.vue';
 import { api } from '@/composables/useApi';
 import type { Item } from '@/types';
 
 const emit = defineEmits<{
-  (e: 'item-deselected'): void;
+  (e: 'item-deselected', id: string): void;
 }>();
 
 const items = ref<Item[]>([]);
@@ -54,6 +60,15 @@ const total = ref(0);
 const filter = ref('');
 const loading = ref(false);
 const hasMore = ref(true);
+// ids of items currently animating/departing
+const departingIds = ref(new Set<string>());
+// highlight state for incoming item
+const highlightedId = ref<string | null>(null);
+// counter pulse state
+const countAnimating = ref(false);
+
+// helper for artificial delay used during animation
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const listContainer = ref<HTMLElement | null>(null);
 
@@ -95,20 +110,36 @@ function onFilterChange() {
   }, 300);
 }
 
+// watch total to trigger pulse animation
+watch(total, () => {
+  countAnimating.value = true;
+  setTimeout(() => { countAnimating.value = false; }, 400);
+});
+
 async function deselectItem(id: string) {
-  // Optimistic update immediately — don't wait for server round-trip
+  // optimistic: count goes down immediately and we mark the item as departing
+  if (!departingIds.value.has(id)) {
+    total.value--;
+    departingIds.value.add(id);
+    emit('item-deselected', id);
+  }
+
+  // begin server request in background
+  const request = api.deselectItem(id);
+
+  // wait for animation duration before actually removing from list
+  await sleep(300);
   items.value = items.value.filter(item => item.id !== id);
-  total.value--;
-  emit('item-deselected');
+  departingIds.value.delete(id);
 
   try {
-    await api.deselectItem(id);
+    await request;
     if (items.value.length < 20 && hasMore.value) {
       await loadItems();
     }
   } catch (err) {
     console.error('Failed to deselect item:', err);
-    // Revert on server error
+    // Revert on server error - reload whole list which will restore counts
     await loadItems(true);
   }
 }
@@ -190,7 +221,16 @@ function refresh() {
   loadItems(true);
 }
 
-defineExpose({ refresh });
+async function refreshWithHighlight(id: string) {
+  hasMore.value = true;
+  await loadItems(true);
+  if (items.value.some(item => item.id === id)) {
+    highlightedId.value = id;
+    setTimeout(() => { highlightedId.value = null; }, 1200);
+  }
+}
+
+defineExpose({ refresh, refreshWithHighlight });
 
 onMounted(() => {
   loadItems(true);
@@ -289,6 +329,22 @@ onMounted(() => {
   background: $bg-card-right-drop;
 }
 
+/* animate rows that are being removed */
+@keyframes slide-out-left {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+}
+
+.item-row.departing {
+  animation: slide-out-left 0.3s forwards;
+}
+
 .drag-handle {
   margin-right: 12px;
   color: $text-drag-handle;
@@ -323,8 +379,35 @@ onMounted(() => {
 }
 
 .btn-deselect:hover {
-  background: $danger;
-  color: $text-primary;
+  background: $success;
+  color: #0a0f1a;
+}
+
+.btn-deselect:active {
+  transform: scale(0.92);
+  background: darken($success, 8%);
+}
+
+/* counter pulse */
+@keyframes count-pulse {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.25); color: $success; }
+  100% { transform: scale(1); }
+}
+.count--pulse {
+  animation: count-pulse 0.4s ease-out;
+  display: inline-block;
+}
+
+/* arrival highlight animation */
+@keyframes arrival-flash {
+  0%   { background: rgba($success, 0.35); border-color: $success; box-shadow: 0 0 12px rgba($success, 0.4); }
+  60%  { background: rgba($success, 0.15); border-color: rgba($success, 0.5); }
+  100% { background: $bg-card-right; border-color: $border-card-right; box-shadow: none; }
+}
+
+.item-row--arrived {
+  animation: arrival-flash 1.2s ease-out forwards;
 }
 
 .loading,

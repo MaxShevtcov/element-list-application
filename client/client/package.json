@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "element-list-client": "file:.."
+  }
+}
