@@ -258,15 +258,19 @@ export const api = {
 
   /**
    * Reorder selected items (drag&drop).
-   * Uses last-write-wins deduplication per itemId.
+   * Fires immediately — no queue delay — because batching concurrent
+   * reorders causes server-side inconsistency: each request carries a
+   * newIndex computed against the optimistic client state at drop time,
+   * and when they all land simultaneously via Promise.all the server ends
+   * up in an order that doesn't match what the user sees.
+   * Sequential execution (one at a time) keeps server state consistent
+   * with the optimistic UI.
    */
   reorderSelected(itemId: string, newIndex: number, filter?: string): Promise<ReorderResponse> {
-    return queue.enqueueReorder(itemId, () =>
-      fetchJson<ReorderResponse>(`${BASE_URL}/selected/reorder`, {
-        method: 'PUT',
-        body: JSON.stringify({ itemId, newIndex, filter }),
-      })
-    );
+    return fetchJson<ReorderResponse>(`${BASE_URL}/selected/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ itemId, newIndex, filter }),
+    });
   },
 };
 
