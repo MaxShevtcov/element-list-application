@@ -16,20 +16,20 @@ export default defineConfig(({ mode }) => {
     css: {
       preprocessorOptions: {
         scss: {
-          
+          // automatically inject variables into every scss block
           additionalData: `@use "@/styles/variables" as *;\n`,
         },
       },
     },
     server: {
       port: 5173,
-      
-      
+      // if a custom API base URL is specified we don't need the local
+      // proxy; the frontend will hit the external address directly.
       proxy: apiBase
         ? {}
         : {
             '/api': {
-              target: 'http:
+              target: 'http://localhost:3000',
               changeOrigin: true,
             },
           },
