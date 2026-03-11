@@ -79,31 +79,24 @@ const addMessageType = ref<'success' | 'error'>('success');
 
 const listContainer = ref<HTMLElement | null>(null);
 
-// helper for animation delays
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
-// Pending items: those not yet confirmed by the server, not already in the loaded list
 const pendingItemsList = computed(() =>
   [...pendingItems.value.entries()]
     .filter(([id]) => !items.value.some(item => item.id === id))
     .map(([id, status]) => ({ id, status }))
 );
 
-// Highlight state when an item arrives from the right panel
 const highlightedId = ref<string | null>(null);
-// Animate counter pulse when total changes
 const countAnimating = ref(false);
 
-// expose a helper for parent to refresh and optionally highlight
 async function refreshWithHighlight(id: string) {
   if (loading.value) return;
 
-  // Save scroll position before refreshing
   const savedScrollTop = listContainer.value?.scrollTop ?? 0;
 
   try {
-    // Fetch at least as many items as currently loaded to avoid collapsing the list
-    const fetchLimit = Math.min(Math.max(items.value.length, 20), 100);
+    const fetchLimit = Math.max(items.value.length, 20);
     const result = await api.getItems(0, fetchLimit, filter.value || undefined);
 
     total.value = result.total;
@@ -114,7 +107,6 @@ async function refreshWithHighlight(id: string) {
     return;
   }
 
-  // Restore scroll position after DOM update
   await nextTick();
   if (listContainer.value) {
     listContainer.value.scrollTop = savedScrollTop;
