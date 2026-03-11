@@ -230,25 +230,19 @@ async function refreshWithHighlight(id: string) {
   }
 }
 
-// mirror of left panel but also skip when dragging
+// silently update the already-loaded range; skip when dragging
 async function silentRefresh(): Promise<void> {
   // don't interrupt active load or drag-and-drop
   if (loading.value || draggedIndex.value !== null) return;
 
   try {
-    // request whole selected set according to backend total; use loaded length as backup
-    const fetchLimit = total.value || Math.max(items.value.length, 20);
+    // Only refresh the items we already have loaded (min 20),
+    // preserving server order.
+    const fetchLimit = Math.max(items.value.length, 20);
     const result = await api.getSelected(0, fetchLimit, filter.value || undefined);
 
     total.value = result.total;
-
-    const newIdSet = new Set(result.items.map((i) => i.id));
-    const oldIdSet = new Set(items.value.map((i) => i.id));
-
-    const survived = items.value.filter((item) => newIdSet.has(item.id));
-    const appeared = result.items.filter((i) => !oldIdSet.has(i.id));
-
-    items.value = [...appeared, ...survived];
+    items.value = result.items;
     hasMore.value = items.value.length < result.total;
   } catch {
     /* ignore polling errors */

@@ -12,7 +12,7 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import LeftPanel from '@/components/LeftPanel.vue';
 import RightPanel from '@/components/RightPanel.vue';
-import { usePolling } from '@/composables/usePolling';
+import { useLongPolling } from '@/composables/useLongPolling';
 
 const leftPanelRef = ref<InstanceType<typeof LeftPanel> | null>(null);
 const rightPanelRef = ref<InstanceType<typeof RightPanel> | null>(null);
@@ -27,14 +27,12 @@ function onItemDeselected(id: string) {
   leftPanelRef.value?.refreshWithHighlight(id);
 }
 
-// background polling for both panels; interval may be overridden via env
-const POLL_INTERVAL = Number(import.meta.env.VITE_POLL_INTERVAL) || 1_000;
-usePolling(
+// Long polling: wait for real server-side changes before refreshing
+useLongPolling(
   () => {
     leftPanelRef.value?.silentRefresh();
     rightPanelRef.value?.silentRefresh();
-  },
-  { interval: POLL_INTERVAL }
+  }
 );
 
 // when tab becomes visible again, force immediate refresh
