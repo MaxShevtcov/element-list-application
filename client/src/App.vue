@@ -12,26 +12,32 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import LeftPanel from '@/components/LeftPanel.vue';
 import RightPanel from '@/components/RightPanel.vue';
-import { useLongPolling } from '@/composables/useLongPolling';
+import { usePolling } from '@/composables/usePolling';
 
 const leftPanelRef = ref<InstanceType<typeof LeftPanel> | null>(null);
 const rightPanelRef = ref<InstanceType<typeof RightPanel> | null>(null);
 
 function onItemSelected(id: string) {
+  // Trigger refresh on the right panel and highlight the incoming id
   rightPanelRef.value?.refreshWithHighlight(id);
 }
 
 function onItemDeselected(id: string) {
+  // Refresh left panel and highlight the returned ID
   leftPanelRef.value?.refreshWithHighlight(id);
 }
 
-useLongPolling(
+// background polling for both panels; interval may be overridden via env
+const POLL_INTERVAL = Number(import.meta.env.VITE_POLL_INTERVAL) || 1_000;
+usePolling(
   () => {
     leftPanelRef.value?.silentRefresh();
     rightPanelRef.value?.silentRefresh();
-  }
+  },
+  { interval: POLL_INTERVAL }
 );
 
+// when tab becomes visible again, force immediate refresh
 function onVisibilityChange() {
   if (document.visibilityState === 'visible') {
     leftPanelRef.value?.silentRefresh();

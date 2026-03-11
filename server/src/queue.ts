@@ -10,6 +10,11 @@ type QueuedOperation = {
   resolve: (result: any) => void;
 };
 
+/**
+ * Request queue with deduplication and batching.
+ * - Add operations are batched every 10 seconds
+ * - Get/modify operations are batched every 1 second
+ */
 class RequestQueue {
   private addQueue: Array<{ id: string; resolve: (result: any) => void }> = [];
   private pendingAddIds: Set<string> = new Set();
@@ -27,9 +32,14 @@ class RequestQueue {
     this.addProcessor = processor;
   }
 
+  /**
+   * Enqueue an add-item operation with deduplication.
+   * IDs already in the add queue are deduplicated.
+   */
   enqueueAdd(id: string): Promise<{ added: boolean; deduplicated: boolean }> {
     return new Promise((resolve) => {
       if (this.pendingAddIds.has(id)) {
+        // Deduplicated — same ID already in queue
         resolve({ added: false, deduplicated: true });
         return;
       }
@@ -43,6 +53,9 @@ class RequestQueue {
     });
   }
 
+  /**
+   * Flush add queue immediately (for testing/shutdown)
+   */
   flushAdds(): void {
     if (this.addTimer) {
       clearTimeout(this.addTimer);
@@ -56,8 +69,11 @@ class RequestQueue {
     
     if (this.addQueue.length === 0) return;
     
+    // Snapshot BEFORE clearing — new enqueues that arrive during processing
+    // will land in the next batch rather than being lost.
     const batch = [...this.addQueue];
     this.addQueue = [];
+    // Remove only the IDs we snapshotted, so any enqueue that raced in stays.
     for (const b of batch) {
       this.pendingAddIds.delete(b.id);
     }
@@ -72,6 +88,10 @@ class RequestQueue {
     }
   }
 
+  /**
+   * Enqueue a get/modify operation. 
+   * Batched and processed every 1 second.
+   */
   enqueueOperation<T>(handler: () => T): Promise<T> {
     return new Promise((resolve) => {
       this.opQueue.push({ handler, resolve });
@@ -100,6 +120,7 @@ class RequestQueue {
     }
   }
 
+  /** Flush operation queue immediately */
   flushOps(): void {
     if (this.opTimer) {
       clearTimeout(this.opTimer);

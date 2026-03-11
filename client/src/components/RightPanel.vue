@@ -60,13 +60,19 @@ const total = ref(0);
 const filter = ref('');
 const loading = ref(false);
 const hasMore = ref(true);
-
+// ids of items currently animating/departing
 const departingIds = ref(new Set<string>());
+// highlight state for incoming item
 const highlightedId = ref<string | null>(null);
+// counter pulse state
 const countAnimating = ref(false);
+
+// helper for artificial delay used during animation
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const listContainer = ref<HTMLElement | null>(null);
+
+// Drag & Drop state
 const draggedIndex = ref<number | null>(null);
 const dragOverIndex = ref<number | null>(null);
 const draggedItemId = ref<string | null>(null);
@@ -104,20 +110,24 @@ function onFilterChange() {
   }, 300);
 }
 
+// watch total to trigger pulse animation
 watch(total, () => {
   countAnimating.value = true;
   setTimeout(() => { countAnimating.value = false; }, 400);
 });
 
 async function deselectItem(id: string) {
+  // optimistic: count goes down immediately and we mark the item as departing
   if (!departingIds.value.has(id)) {
     total.value--;
     departingIds.value.add(id);
     emit('item-deselected', id);
   }
 
+  // begin server request in background
   const request = api.deselectItem(id);
 
+  // wait for animation duration before actually removing from list
   await sleep(300);
   items.value = items.value.filter(item => item.id !== id);
   departingIds.value.delete(id);
@@ -129,10 +139,12 @@ async function deselectItem(id: string) {
     }
   } catch (err) {
     console.error('Failed to deselect item:', err);
+    // Revert on server error - reload whole list which will restore counts
     await loadItems(true);
   }
 }
 
+// Drag & Drop handlers
 function onDragStart(event: DragEvent, index: number) {
   draggedIndex.value = index;
   draggedItemId.value = items.value[index].id;
@@ -167,17 +179,22 @@ async function onDrop(event: DragEvent, targetIndex: number) {
   const sourceIndex = draggedIndex.value;
   const itemId = draggedItemId.value;
 
+  // Optimistic local reorder
   const [movedItem] = items.value.splice(sourceIndex, 1);
   items.value.splice(targetIndex, 0, movedItem);
 
   draggedIndex.value = null;
   draggedItemId.value = null;
 
+  // Calculate the actual server-side index considering the offset of loaded items
+  // The items array starts at offset 0 from the currently visible set
+  // We need to account for any pagination offset
   try {
     await api.reorderSelected(itemId, targetIndex, filter.value || undefined);
   } catch (err: any) {
-    if (err?.message === 'superseded') return;
+    if (err?.message === 'superseded') return; // normal — a newer reorder is queued
     console.error('Failed to reorder:', err);
+    // Revert on failure
     await loadItems(true);
   }
 }
@@ -198,6 +215,7 @@ function onScroll() {
   }
 }
 
+// Public method for parent to trigger refresh
 function refresh() {
   hasMore.value = true;
   loadItems(true);
@@ -212,11 +230,14 @@ async function refreshWithHighlight(id: string) {
   }
 }
 
+// mirror of left panel but also skip when dragging
 async function silentRefresh(): Promise<void> {
+  // don't interrupt active load or drag-and-drop
   if (loading.value || draggedIndex.value !== null) return;
 
   try {
-    const fetchLimit = Math.min(Math.max(items.value.length, 20), 100);
+    // request whole selected set according to backend total; use loaded length as backup
+    const fetchLimit = total.value || Math.max(items.value.length, 20);
     const result = await api.getSelected(0, fetchLimit, filter.value || undefined);
 
     total.value = result.total;
@@ -230,7 +251,7 @@ async function silentRefresh(): Promise<void> {
     items.value = [...appeared, ...survived];
     hasMore.value = items.value.length < result.total;
   } catch {
-    // ignore errors to keep current list
+    /* ignore polling errors */
   }
 }
 
@@ -333,7 +354,7 @@ onMounted(() => {
   background: $bg-card-right-drop;
 }
 
-
+/* animate rows that are being removed */
 @keyframes slide-out-left {
   from {
     transform: translateX(0);
@@ -392,7 +413,7 @@ onMounted(() => {
   background: darken($success, 8%);
 }
 
-
+/* counter pulse */
 @keyframes count-pulse {
   0%   { transform: scale(1); }
   50%  { transform: scale(1.25); color: $success; }
@@ -403,7 +424,7 @@ onMounted(() => {
   display: inline-block;
 }
 
-
+/* arrival highlight animation */
 @keyframes arrival-flash {
   0%   { background: rgba($success, 0.35); border-color: $success; box-shadow: 0 0 12px rgba($success, 0.4); }
   60%  { background: rgba($success, 0.15); border-color: rgba($success, 0.5); }
