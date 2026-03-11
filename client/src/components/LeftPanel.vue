@@ -94,6 +94,7 @@ async function refreshWithHighlight(id: string) {
   if (loading.value) return;
 
   const savedScrollTop = listContainer.value?.scrollTop ?? 0;
+  loading.value = true;
 
   try {
     const fetchLimit = Math.max(items.value.length, 20);
@@ -104,10 +105,17 @@ async function refreshWithHighlight(id: string) {
     hasMore.value = items.value.length < result.total;
   } catch (err) {
     console.error('Failed to load items:', err);
+    loading.value = false;
     return;
   }
 
+  loading.value = false;
+
+  // Wait for Vue to update the DOM, then wait for the browser to paint
+  // before restoring scroll — prevents long-polling silentRefresh from
+  // clobbering the position mid-flight and ensures layout is settled.
   await nextTick();
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   if (listContainer.value) {
     listContainer.value.scrollTop = savedScrollTop;
   }
