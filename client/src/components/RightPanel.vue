@@ -60,19 +60,14 @@ const total = ref(0);
 const filter = ref('');
 const loading = ref(false);
 const hasMore = ref(true);
-// ids of items currently animating/departing
 const departingIds = ref(new Set<string>());
-// highlight state for incoming item
 const highlightedId = ref<string | null>(null);
-// counter pulse state
 const countAnimating = ref(false);
 
-// helper for artificial delay used during animation
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const listContainer = ref<HTMLElement | null>(null);
 
-// Drag & Drop state
 const draggedIndex = ref<number | null>(null);
 const dragOverIndex = ref<number | null>(null);
 const draggedItemId = ref<string | null>(null);
@@ -110,7 +105,6 @@ function onFilterChange() {
   }, 300);
 }
 
-// watch total to trigger pulse animation
 watch(total, () => {
   countAnimating.value = true;
   setTimeout(() => { countAnimating.value = false; }, 400);
@@ -183,7 +177,7 @@ async function onDrop(event: DragEvent, targetIndex: number) {
   try {
     await api.reorderSelected(itemId, targetIndex, filter.value || undefined);
   } catch (err: any) {
-    if (err?.message === 'superseded') return; // normal — a newer reorder is queued
+    if (err?.message === 'superseded') return;
     console.error('Failed to reorder:', err);
     await loadItems(true);
   }
@@ -259,7 +253,6 @@ async function silentRefresh(): Promise<void> {
       hasMore.value = items.value.length < result.total;
     }
   } catch {
-    /* ignore polling errors */
   }
 }
 
@@ -366,7 +359,6 @@ onUnmounted(() => {
   background: $bg-card-right-drop;
 }
 
-/* animate rows that are being removed */
 @keyframes slide-out-left {
   from {
     transform: translateX(0);
@@ -425,7 +417,6 @@ onUnmounted(() => {
   background: darken($success, 8%);
 }
 
-/* counter pulse */
 @keyframes count-pulse {
   0%   { transform: scale(1); }
   50%  { transform: scale(1.25); color: $success; }
@@ -436,7 +427,6 @@ onUnmounted(() => {
   display: inline-block;
 }
 
-/* arrival highlight animation */
 @keyframes arrival-flash {
   0%   { background: rgba($success, 0.35); border-color: $success; box-shadow: 0 0 12px rgba($success, 0.4); }
   60%  { background: rgba($success, 0.15); border-color: rgba($success, 0.5); }

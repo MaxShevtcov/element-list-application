@@ -18,16 +18,13 @@ const leftPanelRef = ref<InstanceType<typeof LeftPanel> | null>(null);
 const rightPanelRef = ref<InstanceType<typeof RightPanel> | null>(null);
 
 function onItemSelected(id: string) {
-  // Trigger refresh on the right panel and highlight the incoming id
   rightPanelRef.value?.refreshWithHighlight(id);
 }
 
 function onItemDeselected(id: string) {
-  // Refresh left panel and highlight the returned ID
   leftPanelRef.value?.refreshWithHighlight(id);
 }
 
-// Long polling: wait for real server-side changes before refreshing
 useLongPolling(
   () => {
     leftPanelRef.value?.silentRefresh();
@@ -35,7 +32,6 @@ useLongPolling(
   }
 );
 
-// when tab becomes visible again, force immediate refresh
 function onVisibilityChange() {
   if (document.visibilityState === 'visible') {
     leftPanelRef.value?.silentRefresh();
