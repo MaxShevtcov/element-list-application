@@ -236,10 +236,10 @@ async function silentRefresh(): Promise<void> {
   if (loading.value || draggedIndex.value !== null) return;
 
   try {
-    const fetchLimit = Math.max(items.value.length, 20);
+    // request whole selected set according to backend total; use loaded length as backup
+    const fetchLimit = total.value || Math.max(items.value.length, 20);
     const result = await api.getSelected(0, fetchLimit, filter.value || undefined);
 
-    // server is the source of truth: replace list
     total.value = result.total;
     items.value = result.items;
     hasMore.value = result.items.length < result.total;

@@ -227,11 +227,12 @@ async function silentRefresh(): Promise<void> {
   if (loading.value) return; // don't interrupt normal loading
 
   try {
-    // Fetch as many rows as we have already loaded (covers infinite scroll)
-    const fetchLimit = Math.max(items.value.length, 20);
+    // Pull the entire server state (backend is source of truth).  
+    // `total` might be 0 before first load, so fall back to loaded length.
+    // after initial mount the first tick will request `limit=total`.
+    const fetchLimit = total.value || Math.max(items.value.length, 20);
     const result = await api.getItems(0, fetchLimit, filter.value || undefined);
 
-    // server is the source of truth: replace the list rather than merge
     total.value = result.total;
     items.value = result.items;
     hasMore.value = result.items.length < result.total;
