@@ -222,8 +222,30 @@ function refresh() {
 }
 
 async function refreshWithHighlight(id: string) {
-  hasMore.value = true;
-  await loadItems(true);
+  if (loading.value) return;
+
+  // Save scroll position before refreshing
+  const savedScrollTop = listContainer.value?.scrollTop ?? 0;
+
+  try {
+    // Fetch at least as many items as currently loaded to avoid collapsing the list
+    const fetchLimit = Math.min(Math.max(items.value.length, 20), 100);
+    const result = await api.getSelected(0, fetchLimit, filter.value || undefined);
+
+    total.value = result.total;
+    items.value = result.items;
+    hasMore.value = items.value.length < result.total;
+  } catch (err) {
+    console.error('Failed to load selected items:', err);
+    return;
+  }
+
+  // Restore scroll position after DOM update
+  await nextTick();
+  if (listContainer.value) {
+    listContainer.value.scrollTop = savedScrollTop;
+  }
+
   if (items.value.some(item => item.id === id)) {
     highlightedId.value = id;
     setTimeout(() => { highlightedId.value = null; }, 1200);
