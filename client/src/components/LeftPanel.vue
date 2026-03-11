@@ -28,6 +28,7 @@
     <div v-if="addMessage" class="add-message" :class="addMessageType">{{ addMessage }}</div>
 
     <div class="list-container" ref="listContainer">
+      <!-- Pending items (optimistic, not yet confirmed by server) -->
       <div
         v-for="pending in pendingItemsList"
         :key="`pending-${pending.id}`"
@@ -69,6 +70,7 @@ const total = ref(0);
 const filter = ref('');
 const loading = ref(false);
 const hasMore = ref(true);
+// ids of items currently animating/departing when selected
 const departingIds = ref(new Set<string>());
 
 const newId = ref('');
@@ -87,13 +89,37 @@ const pendingItemsList = computed(() =>
 
 const highlightedId = ref<string | null>(null);
 const countAnimating = ref(false);
-const pendingHighlightId = ref<string | null>(null);
 
 let lastHighlightRefreshAt = 0;
 
-function refreshWithHighlight(id: string) {
-  pendingHighlightId.value = id;
+async function refreshWithHighlight(id: string) {
+  if (!items.value.some(item => item.id === id)) {
+    items.value.unshift({ id });
+    total.value++;
+  }
+
+  highlightedId.value = id;
+  setTimeout(() => { highlightedId.value = null; }, 1200);
+
   lastHighlightRefreshAt = Date.now();
+
+  try {
+    const fetchLimit = Math.min(Math.max(items.value.length, 20), 100);
+    const result = await api.getItems(0, fetchLimit, filter.value || undefined);
+
+    total.value = result.total;
+    hasMore.value = items.value.length < result.total;
+
+    if (items.value.length <= fetchLimit) {
+      items.value = result.items;
+      if (result.items.some(item => item.id === id)) {
+        highlightedId.value = id;
+        setTimeout(() => { highlightedId.value = null; }, 1200);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to reconcile items after highlight:', err);
+  }
 }
 
 watch(total, () => {
@@ -164,6 +190,7 @@ function addItem() {
 
   addMessage.value = '';
 
+  // If the same ID is already pending, just show a message and don't re-enqueue
   if (pendingItems.value.has(id)) {
     addMessage.value = `ID "${id}" уже в очереди добавления`;
     addMessageType.value = 'error';
@@ -172,7 +199,7 @@ function addItem() {
   }
 
   newId.value = '';
-  total.value++;
+  total.value++; // Optimistic increment
 
   api.addItem(id).then(result => {
     if (result.deduplicated) {
@@ -204,8 +231,7 @@ function onScroll() {
 async function silentRefresh(): Promise<void> {
   if (loading.value || departingIds.value.size > 0) return;
 
-  const hasPending = pendingHighlightId.value !== null;
-  if (!hasPending && Date.now() - lastHighlightRefreshAt < 1000) return;
+  if (Date.now() - lastHighlightRefreshAt < 1000) return;
 
   try {
     const currentLength = items.value.length;
@@ -214,18 +240,14 @@ async function silentRefresh(): Promise<void> {
 
     total.value = result.total;
 
+    // Only update the displayed items (and hasMore) when the fetched window
+    // fits within what we retrieved — avoids a stale hasMore when currentLength > 100.
     if (currentLength <= 100) {
       items.value = result.items;
       hasMore.value = items.value.length < result.total;
     }
-
-    if (pendingHighlightId.value && result.items.some(item => item.id === pendingHighlightId.value)) {
-      highlightedId.value = pendingHighlightId.value;
-      pendingHighlightId.value = null;
-      lastHighlightRefreshAt = Date.now();
-      setTimeout(() => { highlightedId.value = null; }, 1200);
-    }
   } catch {
+    /* ignore polling errors silently */
   }
 }
 
@@ -345,6 +367,7 @@ onUnmounted(() => {
   padding: 8px 0;
 }
 
+/* depart animation (slide-out-right) */
 @keyframes slide-out-right {
   from { opacity: 1; transform: translateX(0); }
   to   { opacity: 0; transform: translateX(60px); }
@@ -354,6 +377,7 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
+/* highlight arrival animation */
 @keyframes arrival-flash {
   0%   { background: rgba($success, 0.35); border-color: $success; box-shadow: 0 0 12px rgba($success, 0.4); }
   60%  { background: rgba($success, 0.15); border-color: rgba($success, 0.5); }
@@ -364,6 +388,7 @@ onUnmounted(() => {
   animation: arrival-flash 1.2s ease-out forwards;
 }
 
+/* counter pulse */
 @keyframes count-pulse {
   0%   { transform: scale(1); }
   50%  { transform: scale(1.25); color: $success; }

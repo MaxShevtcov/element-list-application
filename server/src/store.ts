@@ -2,34 +2,57 @@ export interface Item {
   id: string;
 }
 
+/**
+ * In-memory data store for 1,000,000 elements.
+ * Uses numeric range [1..maxNumericId] for original items.
+ * Custom (user-added) IDs stored separately in a sorted array.
+ * Tracks which items are selected and their drag&drop sort order.
+ */
 export class Store {
+  /** Upper bound of the numeric range (inclusive). Starts at 1_000_000. */
   private maxNumericId: number = 1_000_000;
 
+  /**
+   * Set of custom (non-range) IDs for O(1) dedup lookup.
+   * The numeric range [1..maxNumericId] is implicit — never materialised.
+   */
   private customIdsSet: Set<string> = new Set();
 
+  /** Custom (non-original-range) IDs, kept sorted for stable iteration */
   private customIds: string[] = [];
 
+  /** Ordered array of selected item IDs (maintains drag&drop order) */
   private selectedOrder: string[] = [];
 
+  /** Set for O(1) lookup of selected IDs */
   private selectedSet: Set<string> = new Set();
 
   private version: number = 0;
+  /** Pending long-poll callbacks keyed by auto-incrementing ID for O(1) removal */
   private changeCallbacks: Map<number, () => void> = new Map();
   private callbackIdCounter: number = 0;
 
   constructor() {
+    // Numeric range [1..maxNumericId] is implicit — no pre-allocation needed.
   }
 
+  /**
+   * O(1) existence check without a 1M-entry Set.
+   * Numeric IDs are valid if they fall in [1..maxNumericId].
+   * Custom IDs are tracked in customIdsSet.
+   */
   private isExistingId(id: string): boolean {
     const n = Number(id);
     if (Number.isFinite(n) && String(n) === id && n >= 1 && n <= this.maxNumericId) return true;
     return this.customIdsSet.has(id);
   }
 
+  /** Check if an item ID exists */
   hasItem(id: string): boolean {
     return this.isExistingId(id);
   }
 
+  /** Add a new item. Returns false if ID already exists. */
   addItem(id: string): boolean {
     if (this.isExistingId(id)) return false;
     this.customIdsSet.add(id);
@@ -37,6 +60,7 @@ export class Store {
     return true;
   }
 
+  /** Add multiple items at once. Returns count of actually added. */
   addItems(ids: string[]): number {
     let added = 0;
     for (const id of ids) {
@@ -49,6 +73,7 @@ export class Store {
     return added;
   }
 
+  /** Add multiple items at once. Returns Set of IDs that were actually added (did not exist before). */
   addItemsBatch(ids: string[]): Set<string> {
     const added = new Set<string>();
     for (const id of ids) {
@@ -65,6 +90,7 @@ export class Store {
   }
 
   private insertCustomId(id: string): void {
+    // Binary search to keep customIds sorted
     let lo = 0, hi = this.customIds.length;
     while (lo < hi) {
       const mid = (lo + hi) >>> 1;
@@ -74,6 +100,7 @@ export class Store {
     this.customIds.splice(lo, 0, id);
   }
 
+  /** Compare two IDs: numeric first (ascending), then lexicographic */
   private compareIds(a: string, b: string): number {
     const numA = Number(a);
     const numB = Number(b);
@@ -85,6 +112,7 @@ export class Store {
     return a.localeCompare(b);
   }
 
+  /** Select an item (move to right panel). */
   selectItem(id: string): boolean {
     if (!this.isExistingId(id) || this.selectedSet.has(id)) return false;
     this.selectedSet.add(id);
@@ -93,6 +121,7 @@ export class Store {
     return true;
   }
 
+  /** Deselect an item (move to left panel). */
   deselectItem(id: string): boolean {
     if (!this.selectedSet.has(id)) return false;
     this.selectedSet.delete(id);
@@ -105,6 +134,9 @@ export class Store {
     return this.selectedSet.has(id);
   }
 
+  /**
+   * Count how many selected IDs fall in the numeric range [1..maxNumericId].
+   */
   private countNumericSelected(): number {
     let count = 0;
     for (const sid of this.selectedSet) {
@@ -116,6 +148,9 @@ export class Store {
     return count;
   }
 
+  /**
+   * Build a sorted array of selected numeric IDs for efficient skip-ahead.
+   */
   private getSelectedNumericSorted(): number[] {
     const nums: number[] = [];
     for (const sid of this.selectedSet) {
@@ -127,6 +162,16 @@ export class Store {
     return nums.sort((a, b) => a - b);
   }
 
+  /**
+   * Get unselected items with pagination and optional filter.
+   *
+   * NO FILTER: total is computed mathematically. Items are yielded by
+   * iterating only the numeric range around [offset..offset+limit], using
+   * a sorted list of selected-numeric-IDs to skip gaps efficiently.
+   *
+   * WITH FILTER: linear scan is necessary, but we early-exit once we have
+   * enough items and still count total.
+   */
   async getUnselectedItems(offset: number, limit: number, filter?: string): Promise<{ items: Item[]; total: number }> {
     if (!filter) {
       return this.getUnselectedNoFilter(offset, limit);
@@ -138,6 +183,7 @@ export class Store {
     const numericSelectedCount = this.countNumericSelected();
     const numericUnselected = this.maxNumericId - numericSelectedCount;
 
+    // Count custom unselected
     let customUnselected = 0;
     for (const id of this.customIds) {
       if (!this.selectedSet.has(id)) customUnselected++;
@@ -147,27 +193,36 @@ export class Store {
     const result: Item[] = [];
 
     if (offset < numericUnselected) {
+      // Need some items from the numeric range
+      // Use sorted selected list to skip efficiently
       const selNums = this.getSelectedNumericSorted();
 
+      // Find the starting numeric value for `offset` unselected items
+      // Use the selected-sorted array to jump:
+      // Between selNums[k-1]+1 and selNums[k]-1 there are (selNums[k]-selNums[k-1]-1) unselected
       let unselectedSeen = 0;
       let startNum = 1;
       let selPtr = 0;
 
+      // Skip ahead in chunks between selected numbers
       while (selPtr < selNums.length && unselectedSeen + (selNums[selPtr] - startNum) <= offset) {
-        unselectedSeen += selNums[selPtr] - startNum;
+        unselectedSeen += selNums[selPtr] - startNum; // unselected items before selNums[selPtr]
         startNum = selNums[selPtr] + 1;
         selPtr++;
       }
 
+      // Now startNum..maxNumericId has remaining unselected, need to skip (offset - unselectedSeen) more
       const remaining = offset - unselectedSeen;
       startNum += remaining;
 
+      // Collect items from startNum, skipping selected
       for (let i = startNum; i <= this.maxNumericId && result.length < limit; i++) {
         if (this.selectedSet.has(String(i))) continue;
         result.push({ id: String(i) });
       }
     }
 
+    // If we still need more items, get from custom IDs
     if (result.length < limit) {
       const customOffset = Math.max(0, offset - numericUnselected);
       let customSkipped = 0;
@@ -188,6 +243,7 @@ export class Store {
     let skipped = 0;
     let collected = false; // true once we have limit items
 
+    // Numeric range — yield every 50k iterations to avoid blocking the event loop
     for (let i = 1; i <= this.maxNumericId; i++) {
       if (i % 50_000 === 0) {
         await new Promise<void>(r => setImmediate(r));
@@ -222,6 +278,10 @@ export class Store {
     return { items: result, total: count };
   }
 
+  /**
+   * Get selected items with pagination and optional filter.
+   * Maintains the drag&drop sort order.
+   */
   getSelectedItems(offset: number, limit: number, filter?: string): { items: Item[]; total: number } {
     let filtered: string[];
     if (filter) {
@@ -235,6 +295,10 @@ export class Store {
     return { items, total };
   }
 
+  /**
+   * Reorder selected items via drag&drop.
+   * Works with filtered list positions — maps back to the full order.
+   */
   reorderSelected(itemId: string, newIndex: number, filter?: string): boolean {
     if (!this.selectedSet.has(itemId)) return false;
     let changed = false;
@@ -280,6 +344,12 @@ export class Store {
     return this.version;
   }
 
+  /**
+   * Resolves when version advances past lastVersion, or after timeoutMs.
+   * Returns null if the request was aborted (client disconnected).
+   * The AbortSignal ensures the callback is removed immediately on disconnect,
+   * preventing unbounded growth of changeCallbacks under high churn.
+   */
   async waitForChange(lastVersion: number, timeoutMs: number, signal?: AbortSignal): Promise<number | null> {
     if (this.version > lastVersion) return this.version;
     if (signal?.aborted) return null;
@@ -317,4 +387,5 @@ export class Store {
   }
 }
 
+// Singleton
 export const store = new Store();

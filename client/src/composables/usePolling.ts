@@ -1,11 +1,19 @@
 import { onMounted, onUnmounted } from 'vue';
 
 export interface UsePollingOptions {
+  /** Интервал в мс (по умолчанию 1000) */
   interval?: number;
+  /** Запускать ли немедленно при монтировании (по умолчанию true) */
   immediate?: boolean;
+  /** Пропускать ли итерацию, если вкладка скрыта (по умолчанию true) */
   pauseWhenHidden?: boolean;
 }
 
+/**
+ * Периодически вызывает `callback` с заданным интервалом.
+ * Автоматически останавливается при уничтожении компонента.
+ * Пропускает итерацию, если вкладка неактивна (опционально).
+ */
 export function usePolling(
   callback: () => void | Promise<void>,
   options: UsePollingOptions = {}

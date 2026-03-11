@@ -1,7 +1,16 @@
+/**
+ * Lightweight operation queue.
+ * Operations are batched and executed together every 1 second.
+ * Errors in handlers are properly rejected (not swallowed as resolved values).
+ */
 class RequestQueue {
   private opQueue: Array<{ handler: () => any; resolve: (result: any) => void; reject: (err: any) => void }> = [];
   private opTimer: NodeJS.Timeout | null = null;
 
+  /**
+   * Enqueue a synchronous operation.
+   * All operations queued within the same 1-second window are executed together.
+   */
   enqueueOperation<T>(handler: () => T): Promise<T> {
     return new Promise((resolve, reject) => {
       this.opQueue.push({ handler, resolve, reject });
@@ -30,6 +39,7 @@ class RequestQueue {
     }
   }
 
+  /** Flush operation queue immediately (for testing) */
   flushOps(): void {
     if (this.opTimer) {
       clearTimeout(this.opTimer);
